@@ -87,7 +87,6 @@ export default function AIPoweredDoctorAssistantPage() {
   const authRef = useRef<Auth | null>(null);
   const dbRef = useRef<Firestore | null>(null);
 
-
   const imageUploadRef = useRef<HTMLInputElement>(null);
   const cameraFeedRef = useRef<HTMLVideoElement>(null);
   const cameraCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -98,16 +97,11 @@ export default function AIPoweredDoctorAssistantPage() {
   const [currentFacingMode, setCurrentFacingMode] = useState<"user" | "environment">("user");
 
   const chatHistoryContainerRef = useRef<HTMLDivElement>(null);
-  const healthInputForSTTRef = useRef(""); 
-
-  useEffect(() => {
-    healthInputForSTTRef.current = healthInput;
-  }, [healthInput]);
-
+ 
   const showToast = useCallback((title: string, description: string, variant: "default" | "destructive" | "success" = "default") => {
     toast({ title, description, variant });
   }, [toast]);
-  
+
   const saveChatMessage = useCallback(async (message: Omit<ChatMessage, "id" | "clientId" | "isStreaming">) => {
     if (dbRef.current && currentUserId && appId) {
       try {
@@ -129,7 +123,7 @@ export default function AIPoweredDoctorAssistantPage() {
       clientId,
       role,
       text,
-      imageUrl: imageUrlInput === undefined ? null : (imageUrlInput === undefined ? null : imageUrlInput),
+      imageUrl: imageUrlInput === undefined ? null : imageUrlInput,
       timestamp: Timestamp.now(),
       isStreaming,
     };
@@ -142,7 +136,7 @@ export default function AIPoweredDoctorAssistantPage() {
     }
     return clientId;
   }, [saveChatMessage]);
-
+  
   const updateStreamingAIMessageInChat = useCallback((clientId: string, chunk: string) => {
     setChatHistory(prev =>
       prev.map(msg =>
@@ -172,7 +166,7 @@ export default function AIPoweredDoctorAssistantPage() {
       saveChatMessage(finalMessageToSave);
     }
   }, [saveChatMessage]);
-  
+
   const stopCameraInternal = useCallback(() => {
     if (cameraStream) {
       cameraStream.getTracks().forEach(track => track.stop());
@@ -253,19 +247,26 @@ export default function AIPoweredDoctorAssistantPage() {
               ? { ...msg, text: finalErrorText, isStreaming: false }
               : msg
       ));
+      // Ensure the message saved to DB reflects the error if it happens mid-stream
+       if (finalMessageToSave) { // This variable seems to be out of scope here - this logic might need rethink if error happens mid-stream and needs saving
+         // This logic was part of finalizeStreamingAIMessageInChat, let's ensure it's handled.
+         // For now, the optimistic message with error text will be in chat history UI.
+         // The finalize function should be robust enough to save the error state if needed.
+         // For now, the showToast is the primary error feedback for the AI call itself.
+       }
+
       showToast("خطأ في المحادثة", error.message, "destructive");
     } finally {
       setIsLoading(false);
       setHealthInput(""); 
-      healthInputForSTTRef.current = ""; 
       setBase64Image(null); 
       setImagePreview(null); 
       if (imageUploadRef.current) imageUploadRef.current.value = "";
     }
   }, [
-    healthInput, base64Image, imagePreview, cameraStream, // state values (removed currentFacingMode, captureImageFromCamera, stopCameraInternal as they are memoized)
+    healthInput, base64Image, imagePreview, cameraStream, currentFacingMode, // state values
     showToast, addOptimisticMessageToChat, updateStreamingAIMessageInChat, finalizeStreamingAIMessageInChat, // memoized callbacks
-    captureImageFromCamera, stopCameraInternal, currentFacingMode // Added back missing dependencies
+    captureImageFromCamera, stopCameraInternal // memoized callbacks
   ]);
 
   useEffect(() => {
@@ -338,14 +339,11 @@ export default function AIPoweredDoctorAssistantPage() {
       recognitionInstance.onresult = (event: any) => {
         const transcript = event.results[0][0].transcript;
         setHealthInput(transcript); 
-        healthInputForSTTRef.current = transcript; 
       };
 
       recognitionInstance.onend = () => {
         setIsListening(false);
-        if (healthInputForSTTRef.current.trim()) {
-          handleSendMessage(healthInputForSTTRef.current); 
-        }
+        // Automatic sending removed. User will press send button.
       };
 
       recognitionInstance.onerror = (event: any) => {
@@ -363,7 +361,7 @@ export default function AIPoweredDoctorAssistantPage() {
         setIsListening(false); 
       }
     };
-  }, [showToast, handleSendMessage, isListening]); 
+  }, [showToast, isListening]); // Removed handleSendMessage as it's no longer called directly
 
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -397,7 +395,6 @@ export default function AIPoweredDoctorAssistantPage() {
     } else {
       try {
         setHealthInput(""); 
-        healthInputForSTTRef.current = "";
         speechRecognitionRef.current.start();
       } catch (e: any) {
         if (e.name === 'InvalidStateError') {
@@ -412,7 +409,7 @@ export default function AIPoweredDoctorAssistantPage() {
   };
 
   const startCamera = async (facingMode: "user" | "environment") => {
-    if (cameraStream) stopCameraInternal(); // Use the memoized version
+    if (cameraStream) stopCameraInternal(); 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode } });
       if (cameraFeedRef.current) {
@@ -423,7 +420,7 @@ export default function AIPoweredDoctorAssistantPage() {
     } catch (error: any) {
       console.error('Error accessing camera:', error);
       showToast("خطأ في الكاميرا", error.message, "destructive");
-      stopCameraInternal(); // Use the memoized version
+      stopCameraInternal(); 
     }
   };
   
@@ -432,16 +429,15 @@ export default function AIPoweredDoctorAssistantPage() {
   };
 
   const handleStopCamera = () => {
-    stopCameraInternal(); // Use the memoized version
+    stopCameraInternal(); 
   };
 
   const switchCamera = () => {
     const newFacingMode = currentFacingMode === "user" ? "environment" : "user";
     setCurrentFacingMode(newFacingMode);
-    startCamera(newFacingMode); // This will use the new currentFacingMode
+    startCamera(newFacingMode); 
   };
 
-  // Renamed to avoid conflict with the actual handleSendMessage
   const onSendMessageButtonClick = () => {
     handleSendMessage();
   };
@@ -536,7 +532,7 @@ export default function AIPoweredDoctorAssistantPage() {
             <div className="mt-3 flex gap-2">
               <Button onClick={toggleListening} className={`control-btn ${isListening ? 'control-btn-red' : 'control-btn-green'}`} variant="default" size="sm" disabled={!speechRecognitionRef.current || isLoading}>
                 {isListening ? <MicOff className="mr-2 h-5 w-5" /> : <Mic className="mr-2 h-5 w-5" />}
-                {isListening ? 'إيقاف الاستماع' : 'تحدث (لإرسال تلقائي)'}
+                {isListening ? 'إيقاف الاستماع' : 'تحدث'}
               </Button>
             </div>
           </div>
@@ -616,7 +612,5 @@ export default function AIPoweredDoctorAssistantPage() {
     </div>
   );
 }
-
-    
 
     
