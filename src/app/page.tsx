@@ -27,7 +27,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Label } from "@/components/ui/label";
+import { Label } from "@/components/ui/label"; // Ensured Label is imported
 import { useToast } from "@/hooks/use-toast";
 import {
   Stethoscope,
@@ -35,11 +35,10 @@ import {
   ClipboardList,
   Mic,
   MicOff,
-  Square,
-  UploadCloud,
+  UploadCloud, // Keep if still used, or remove
   Video,
   RefreshCw,
-  Camera as CameraIcon, // Renamed to avoid conflict with Camera type
+  Camera as CameraIcon,
   VideoOff,
   Bot,
   Volume2,
@@ -47,17 +46,16 @@ import {
   Loader2,
   Image as ImageIcon,
   FileUp,
-  Info,
   TriangleAlert,
-  CircleAlert,
 } from "lucide-react";
 
-import { analyzeHealthInput, type AnalyzeHealthInputInput, type AnalyzeHealthInputOutput } from "@/ai/flows/analyze-health-input";
+// Import the new streaming chat flow
+import { streamedChat, type StreamedChatInput } from "@/ai/flows/streamed-chat-flow";
 
 
 // Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyCSPxKajkhJmKM42QFmQIEX0dcE-34CDDg", // Replace with your actual API key if different from example
+  apiKey: "AIzaSyCSPxKajkhJmKM42QFmQIEX0dcE-34CDDg", 
   authDomain: "doctor-assistniat.firebaseapp.com",
   projectId: "doctor-assistniat",
   storageBucket: "doctor-assistniat.firebasestorage.app",
@@ -67,41 +65,37 @@ const firebaseConfig = {
 };
 
 interface ChatMessage {
-  id?: string;
+  id?: string; // Firestore document ID
+  clientId?: string; // Client-side unique ID for optimistic updates & streaming
   role: "user" | "model";
   text: string;
   imageUrl?: string | null;
   timestamp: Timestamp;
+  isStreaming?: boolean; // To indicate AI message is currently streaming
 }
 
 export default function AIPoweredDoctorAssistantPage() {
   const { toast } = useToast();
 
-  // State variables
   const [healthInput, setHealthInput] = useState("");
   const [base64Image, setBase64Image] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [imageMimeType, setImageMimeType] = useState<string>("image/png");
-
+  // const [imageMimeType, setImageMimeType] = useState<string>("image/png"); // Not actively used, can be removed if not needed elsewhere
 
   const [isLoading, setIsLoading] = useState(false);
-  const [aiResponse, setAiResponse] = useState<AnalyzeHealthInputOutput | null>(null);
   
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [appId, setAppId] = useState<string | null>(null);
 
-  // Firebase instances
   const appRef = useRef<FirebaseApp | null>(null);
   const authRef = useRef<Auth | null>(null);
   const dbRef = useRef<Firestore | null>(null);
 
-  // Media elements refs
   const imageUploadRef = useRef<HTMLInputElement>(null);
   const cameraFeedRef = useRef<HTMLVideoElement>(null);
   const cameraCanvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Media stream and recognition/synthesis instances
   const [speechRecognition, setSpeechRecognition] = useState<SpeechRecognition | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [speechSynthesisUtterance, setSpeechSynthesisUtterance] = useState<SpeechSynthesisUtterance | null>(null);
@@ -111,12 +105,10 @@ export default function AIPoweredDoctorAssistantPage() {
 
   const chatHistoryContainerRef = useRef<HTMLDivElement>(null);
 
-  // Helper to display toast messages
   const showToast = useCallback((title: string, description: string, variant: "default" | "destructive" | "success" = "default") => {
     toast({ title, description, variant });
   }, [toast]);
 
-  // Initialize Firebase
   useEffect(() => {
     if (!appRef.current) {
       try {
@@ -124,12 +116,11 @@ export default function AIPoweredDoctorAssistantPage() {
         appRef.current = app;
         authRef.current = getAuth(app);
         dbRef.current = getFirestore(app);
-        setAppId(firebaseConfig.projectId); // Using projectId as app identifier
+        setAppId(firebaseConfig.projectId);
 
         onAuthStateChanged(authRef.current, (user: FirebaseUser | null) => {
           if (user) {
             setCurrentUserId(user.uid);
-            showToast("تم تسجيل الدخول", `معرف المستخدم: ${user.uid}`, "success");
           } else {
             signInAnonymously(authRef.current!).catch(error => {
               console.error("Anonymous sign-in failed:", error);
@@ -144,7 +135,6 @@ export default function AIPoweredDoctorAssistantPage() {
     }
   }, [showToast]);
 
-  // Load chat history
   useEffect(() => {
     if (dbRef.current && currentUserId && appId) {
       const chatCollectionRef = collection(dbRef.current, `artifacts/${appId}/users/${currentUserId}/medical_chat_history`);
@@ -153,12 +143,15 @@ export default function AIPoweredDoctorAssistantPage() {
       const unsubscribe = onSnapshot(q, (snapshot) => {
         const history: ChatMessage[] = [];
         snapshot.forEach(doc => {
-          history.push({ id: doc.id, ...doc.data() } as ChatMessage);
+          const data = doc.data();
+          history.push({ 
+            id: doc.id, 
+            ...data,
+            // Ensure timestamp is a Firebase Timestamp object from Firestore
+             timestamp: data.timestamp instanceof Timestamp ? data.timestamp : Timestamp.fromDate(new Date(data.timestamp.seconds * 1000)) 
+          } as ChatMessage);
         });
         setChatHistory(history);
-        if (history.length > 0) {
-           showToast("تم تحميل سجل المحادثات", "", "default");
-        }
       }, (error) => {
         console.error("Error loading chat history:", error);
         showToast("فشل تحميل سجل المحادثات", error.message, "destructive");
@@ -167,19 +160,15 @@ export default function AIPoweredDoctorAssistantPage() {
     }
   }, [currentUserId, appId, showToast]);
 
-  // Scroll chat to bottom
    useEffect(() => {
     if (chatHistoryContainerRef.current) {
       chatHistoryContainerRef.current.scrollTop = chatHistoryContainerRef.current.scrollHeight;
     }
   }, [chatHistory]);
 
-  // Save chat message
-  const saveChatMessage = async (message: Omit<ChatMessage, "id">) => {
+  const saveChatMessage = async (message: Omit<ChatMessage, "id" | "clientId" | "isStreaming">) => {
     if (dbRef.current && currentUserId && appId) {
       try {
-        // The 'message' object already contains the Firebase Timestamp.
-        // Its type Omit<ChatMessage, "id"> is suitable for addDoc.
         await addDoc(collection(dbRef.current, `artifacts/${appId}/users/${currentUserId}/medical_chat_history`), message);
       } catch (error: any) {
         console.error("Error saving chat message:", error);
@@ -188,23 +177,57 @@ export default function AIPoweredDoctorAssistantPage() {
     }
   };
 
-  // Add message to local state and then save
-  const addMessageToChat = (role: "user" | "model", text: string, imageUrl?: string | null) => {
+  const addOptimisticMessageToChat = (role: "user" | "model", text: string, imageUrl?: string | null, isStreaming = false): string => {
+    const clientId = `client-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     const newMessage: ChatMessage = {
+      clientId,
       role,
       text,
-      imageUrl: imageUrl || null, // Ensure imageUrl is null if undefined/empty
+      imageUrl: imageUrl || null,
       timestamp: Timestamp.now(),
+      isStreaming,
     };
-    setChatHistory(prev => [...prev, newMessage]); // Optimistic update
-    
-    // Prepare payload for saveChatMessage (Omit<ChatMessage, "id">)
-    const { id, ...messagePayload } = newMessage; 
-    saveChatMessage(messagePayload);
+  
+    setChatHistory(prev => [...prev, newMessage]);
+  
+    // Save user messages immediately, AI messages will be saved upon stream completion
+    if (role === 'user') {
+      const { id, clientId: cId, isStreaming: _, ...messagePayload } = newMessage;
+      saveChatMessage(messagePayload);
+    }
+    return clientId;
+  };
+
+  const updateStreamingAIMessageInChat = (clientId: string, chunk: string) => {
+    setChatHistory(prev =>
+      prev.map(msg =>
+        msg.clientId === clientId && msg.role === 'model'
+          ? { ...msg, text: msg.text + chunk }
+          : msg
+      )
+    );
+  };
+  
+  const finalizeStreamingAIMessageInChat = (clientId: string) => {
+    let finalMessageToSave: Omit<ChatMessage, "id" | "clientId" | "isStreaming"> | null = null;
+    setChatHistory(prev =>
+      prev.map(msg => {
+        if (msg.clientId === clientId && msg.role === 'model') {
+          const finalMessage = { ...msg, isStreaming: false };
+          const { id, clientId: cId, isStreaming: _, ...messagePayload } = finalMessage;
+          finalMessageToSave = messagePayload;
+          return finalMessage;
+        }
+        return msg;
+      })
+    );
+  
+    if (finalMessageToSave) {
+      saveChatMessage(finalMessageToSave);
+    }
   };
 
 
-  // Image Upload Logic
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
@@ -212,8 +235,8 @@ export default function AIPoweredDoctorAssistantPage() {
       reader.onload = (e) => {
         const dataUrl = e.target?.result as string;
         setImagePreview(dataUrl);
-        setBase64Image(dataUrl); // Full data URI
-        setImageMimeType(file.type);
+        setBase64Image(dataUrl);
+        // setImageMimeType(file.type);
         showToast("تم اختيار الصورة", "يمكنك الآن إرفاقها مع رسالتك.", "success");
       };
       reader.onerror = (error) => {
@@ -229,7 +252,6 @@ export default function AIPoweredDoctorAssistantPage() {
     }
   };
 
-  // Speech Recognition
   useEffect(() => {
     if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
       const SpeechRecognitionAPI = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -242,7 +264,6 @@ export default function AIPoweredDoctorAssistantPage() {
       recognitionInstance.onresult = (event: any) => {
         const transcript = event.results[0][0].transcript;
         setHealthInput(transcript);
-        showToast("تم التعرف على الكلام", "", "success");
       };
       recognitionInstance.onerror = (event: any) => {
         console.error('Speech recognition error:', event.error);
@@ -250,8 +271,6 @@ export default function AIPoweredDoctorAssistantPage() {
         setIsListening(false);
       };
       setSpeechRecognition(recognitionInstance);
-    } else {
-      showToast("غير مدعوم", "متصفحك لا يدعم ميزة التعرف على الكلام.", "default");
     }
   }, [showToast]);
 
@@ -261,7 +280,7 @@ export default function AIPoweredDoctorAssistantPage() {
       speechRecognition.stop();
     } else {
       try {
-        setHealthInput(""); // Clear input before new speech
+        setHealthInput(""); 
         speechRecognition.start();
       } catch (e) {
         showToast("خطأ", "الميكروفون قيد الاستخدام أو حدث خطأ.", "destructive");
@@ -269,23 +288,23 @@ export default function AIPoweredDoctorAssistantPage() {
     }
   };
 
-  // Speech Synthesis
   useEffect(() => {
     if ('speechSynthesis' in window) {
       const utterance = new SpeechSynthesisUtterance();
       utterance.lang = 'ar-SA';
       
-      speechSynthesis.onvoiceschanged = () => { // Ensure voices are loaded
-          const voices = speechSynthesis.getVoices();
-          const arabicVoice = voices.find(voice => voice.lang === 'ar-SA' || (voice.lang.startsWith('ar-') && voice.name.includes('Google')));
-          if (arabicVoice) utterance.voice = arabicVoice;
+      const setVoice = () => {
+        const voices = speechSynthesis.getVoices();
+        const arabicVoice = voices.find(voice => voice.lang === 'ar-SA' || (voice.lang.startsWith('ar-') && voice.default));
+        if (arabicVoice) utterance.voice = arabicVoice;
       };
-      if (speechSynthesis.getVoices().length > 0) { // If already loaded
-          const voices = speechSynthesis.getVoices();
-          const arabicVoice = voices.find(voice => voice.lang === 'ar-SA' || (voice.lang.startsWith('ar-') && voice.name.includes('Google')));
-          if (arabicVoice) utterance.voice = arabicVoice;
-      }
 
+      if (speechSynthesis.getVoices().length > 0) {
+          setVoice();
+      } else {
+          speechSynthesis.onvoiceschanged = setVoice;
+      }
+      
       utterance.onstart = () => setIsSpeaking(true);
       utterance.onend = () => setIsSpeaking(false);
       utterance.onerror = (event) => {
@@ -294,18 +313,20 @@ export default function AIPoweredDoctorAssistantPage() {
         setIsSpeaking(false);
       };
       setSpeechSynthesisUtterance(utterance);
-    } else {
-      showToast("غير مدعوم", "متصفحك لا يدعم ميزة تحويل النص إلى كلام.", "default");
     }
   }, [showToast]);
 
   const toggleSpeaking = () => {
-    if (!speechSynthesisUtterance || !aiResponse?.summary) return;
+    const lastAiMessage = [...chatHistory].reverse().find(msg => msg.role === 'model' && !msg.isStreaming && msg.text);
+    if (!speechSynthesisUtterance || !lastAiMessage?.text) {
+      showToast("لا يوجد نص", "لا يوجد نص لقراءته.", "default");
+      return;
+    }
     if (isSpeaking) {
       speechSynthesis.cancel();
     } else {
-      const textToSpeak = `${aiResponse.summary}\n${aiResponse.suggestedTests || ''}`;
-      if (!textToSpeak.trim() || textToSpeak.trim() === 'الاستجابة ستظهر هنا بعد الإرسال...') {
+      const textToSpeak = lastAiMessage.text;
+      if (!textToSpeak.trim()) {
         showToast("لا يوجد نص", "لا يوجد نص لقراءته.", "default");
         return;
       }
@@ -314,9 +335,8 @@ export default function AIPoweredDoctorAssistantPage() {
     }
   };
 
-  // Camera Logic
   const startCamera = async (facingMode: "user" | "environment") => {
-    if (cameraStream) stopCameraInternal(); // Stop existing stream
+    if (cameraStream) stopCameraInternal();
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode } });
       if (cameraFeedRef.current) {
@@ -324,7 +344,6 @@ export default function AIPoweredDoctorAssistantPage() {
         cameraFeedRef.current.style.transform = (facingMode === 'user') ? 'scaleX(-1)' : 'scaleX(1)';
       }
       setCameraStream(stream);
-      showToast("تم تشغيل الكاميرا", `الوضع: ${facingMode === 'user' ? 'أمامي' : 'خلفي'}`, "success");
     } catch (error: any) {
       console.error('Error accessing camera:', error);
       showToast("خطأ في الكاميرا", error.message, "destructive");
@@ -332,12 +351,11 @@ export default function AIPoweredDoctorAssistantPage() {
     }
   };
 
-  const stopCameraInternal = () => { // Renamed to avoid conflict
+  const stopCameraInternal = () => {
     if (cameraStream) {
       cameraStream.getTracks().forEach(track => track.stop());
       if (cameraFeedRef.current) cameraFeedRef.current.srcObject = null;
       setCameraStream(null);
-      showToast("تم إيقاف الكاميرا", "", "default");
     }
   };
   
@@ -358,7 +376,7 @@ export default function AIPoweredDoctorAssistantPage() {
   const captureImageFromCamera = () => {
     if (!cameraStream || !cameraFeedRef.current || !cameraCanvasRef.current) {
       showToast("الكاميرا غير نشطة", "يرجى تشغيل الكاميرا أولاً.", "destructive");
-      return;
+      return null; // Return null if capture fails
     }
     const video = cameraFeedRef.current;
     const canvas = cameraCanvasRef.current;
@@ -366,83 +384,82 @@ export default function AIPoweredDoctorAssistantPage() {
     canvas.height = video.videoHeight;
     const context = canvas.getContext('2d');
     if (context) {
-      if (currentFacingMode === 'user') { // Flip if front camera
+      if (currentFacingMode === 'user') {
         context.translate(canvas.width, 0);
         context.scale(-1, 1);
       }
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      if (currentFacingMode === 'user') { // Reset transform
+      if (currentFacingMode === 'user') {
         context.setTransform(1, 0, 0, 1, 0, 0);
       }
       const imageDataUrl = canvas.toDataURL('image/png');
-      setBase64Image(imageDataUrl); // Full data URI
-      setImagePreview(imageDataUrl);
-      setImageMimeType('image/png');
-      showToast("تم التقاط الصورة", "يمكنك الآن إرفاقها مع رسالتك.", "success");
+      setImagePreview(imageDataUrl); // For display in current message
+      // setBase64Image(imageDataUrl); // This sets it for the *next* message. We want it for *this* one.
+      showToast("تم التقاط الصورة", "سترفق مع رسالتك الحالية.", "success");
+      return imageDataUrl; // Return for immediate use
     }
+    return null;
   };
 
-  // AI Consultation
-  const handleConsult = async () => {
+  const handleSendMessage = async () => {
     const userInput = healthInput.trim();
+    let currentImageToSend = base64Image; // Image from upload
+    const currentImagePreview = imagePreview; // Preview from upload for user message
 
-    if (!cameraStream && imageUploadRef.current?.files?.length === 0 && !base64Image && !userInput) {
-       showToast("الإدخال مطلوب", "الرجاء وصف حالتك الصحية، أو ارفق صورة، أو التقط صورة.", "destructive");
-       return;
-    }
-    
-    // Capture from camera if active and no image uploaded/captured yet
-    if (cameraStream && !base64Image) {
-      captureImageFromCamera();
-      // Wait a bit for state update
-      await new Promise(resolve => setTimeout(resolve, 200));
-      if (!base64Image && !userInput) { // Check again if image capture failed and no text
-          showToast("الإدخال مطلوب", "فشل التقاط الصورة ولم يتم إدخال نص. يرجى المحاولة مرة أخرى.", "destructive");
-          return;
+    if (cameraStream && !currentImageToSend) { // If camera is on and no file uploaded, capture from camera
+      const capturedImg = captureImageFromCamera();
+      if (capturedImg) {
+        currentImageToSend = capturedImg;
+        // imagePreview is already set by captureImageFromCamera for the user message display
       }
     }
-
-
-    if (!userInput && !base64Image) {
-      showToast("الإدخال مطلوب", "الرجاء وصف حالتك الصحية أو ارفق صورة.", "destructive");
+    
+    if (!userInput && !currentImageToSend) {
+      showToast("الإدخال مطلوب", "الرجاء كتابة رسالة أو إرفاق/التقاط صورة.", "destructive");
       return;
     }
 
     setIsLoading(true);
-    setAiResponse(null);
-    showToast("جاري المعالجة", "يتم تحليل طلبك...", "default");
-
-    // Stop media
     if (isSpeaking) speechSynthesis.cancel();
+    // Decide if camera should be stopped after sending. For now, let's stop it.
     if (cameraStream) stopCameraInternal();
 
-    // Add user message to chat
-    addMessageToChat("user", userInput, imagePreview);
+    addOptimisticMessageToChat("user", userInput, currentImagePreview || (currentImageToSend ? currentImageToSend : null) );
+    const aiMessageClientId = addOptimisticMessageToChat("model", "", null, true);
 
     try {
-      const requestPayload: AnalyzeHealthInputInput = {
-        healthInput: userInput || "تحليل الصورة المرفقة.", // Provide default text if only image
+      const requestPayload: StreamedChatInput = {
+        prompt: userInput || (currentImageToSend ? "صف هذه الصورة." : "مرحباً"),
       };
-      if (base64Image) {
-        requestPayload.photoDataUri = base64Image;
+      if (currentImageToSend) {
+        requestPayload.photoDataUri = currentImageToSend;
       }
 
-      const result = await analyzeHealthInput(requestPayload);
-      setAiResponse(result);
-      addMessageToChat("model", `${result.summary}\n\nالاقتراحات: ${result.suggestedTests}`);
-      showToast("تمت الاستشارة بنجاح", "", "success");
+      for await (const chunkText of streamedChat(requestPayload)) {
+        updateStreamingAIMessageInChat(aiMessageClientId, chunkText);
+      }
+      finalizeStreamingAIMessageInChat(aiMessageClientId);
+      // showToast("تم الاستلام", "اكتمل رد المساعد.", "success"); // Less intrusive, user sees stream
 
     } catch (error: any) {
-      console.error("Error calling AI flow:", error);
-      setAiResponse({summary: `عذراً، حدث خطأ: ${error.message}`, suggestedTests: 'يرجى المحاولة مرة أخرى.'});
-      addMessageToChat("model", `عذراً، حدث خطأ أثناء معالجة طلبك: ${error.message}`);
-      showToast("خطأ في الاستشارة", error.message, "destructive");
+      console.error("Error calling AI streaming flow:", error);
+      setChatHistory(prev => prev.map(msg =>
+          msg.clientId === aiMessageClientId
+              ? { ...msg, text: `عذراً، حدث خطأ: ${error.message}`, isStreaming: false }
+              : msg
+      ));
+      const errorMsgEntry = chatHistory.find(msg => msg.clientId === aiMessageClientId);
+      if (errorMsgEntry) {
+          const { id, clientId, isStreaming, ...payload } = {...errorMsgEntry, text: `عذراً، حدث خطأ: ${error.message}`, isStreaming: false};
+          saveChatMessage(payload);
+      }
+      showToast("خطأ في المحادثة", error.message, "destructive");
     } finally {
       setIsLoading(false);
       setHealthInput("");
-      setBase64Image(null);
-      setImagePreview(null);
-      if (imageUploadRef.current) imageUploadRef.current.value = ""; // Clear file input
+      setBase64Image(null); // Clear for next message
+      setImagePreview(null); // Clear for next message
+      if (imageUploadRef.current) imageUploadRef.current.value = "";
     }
   };
 
@@ -455,7 +472,7 @@ export default function AIPoweredDoctorAssistantPage() {
             مساعدك الطبي الذكي
           </CardTitle>
           <p className="text-center text-muted-foreground mb-6 text-md md:text-lg">
-            صف حالتك أو أرسل فحوصاتك للحصول على معلومات عامة مفصلة.
+            تحدث مباشرة مع المساعد واحصل على ردود فورية.
           </p>
         </CardHeader>
 
@@ -484,7 +501,7 @@ export default function AIPoweredDoctorAssistantPage() {
               <p className="text-muted-foreground text-center py-10">ابدأ محادثتك مع المساعد الطبي...</p>
             ) : (
               chatHistory.map((msg, index) => (
-                <div key={msg.id || index} className={`chat-message ${msg.role}`}>
+                <div key={msg.clientId || msg.id || index} className={`chat-message ${msg.role}`}>
                   <div className="flex items-start gap-2.5">
                      {msg.role === 'user' ? 
                         <UserCircle className="h-6 w-6 text-muted-foreground shrink-0" /> : 
@@ -496,10 +513,12 @@ export default function AIPoweredDoctorAssistantPage() {
                                 {msg.role === 'user' ? 'أنت' : 'المساعد'}
                             </span>
                             <span className="text-xs font-normal text-muted-foreground">
-                                {new Date(msg.timestamp.seconds * 1000).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}
+                                {msg.timestamp && new Date(msg.timestamp.seconds * 1000).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}
                             </span>
                         </div>
-                        <p className="text-sm font-normal text-foreground py-2">{msg.text}</p>
+                        <p className="text-sm font-normal text-foreground py-2 whitespace-pre-wrap">{msg.text}
+                         {msg.isStreaming && <span className="inline-block w-2 h-4 bg-primary animate-pulse ml-1"></span>}
+                        </p>
                         {msg.imageUrl && (
                             <div className="mt-2">
                             <Image src={msg.imageUrl} alt="صورة مرفقة" width={200} height={200} className="rounded-lg object-contain" data-ai-hint="medical scan" />
@@ -523,9 +542,15 @@ export default function AIPoweredDoctorAssistantPage() {
               placeholder="صف حالتك أو اطرح سؤالاً..."
               value={healthInput}
               onChange={(e) => setHealthInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey && !isLoading) {
+                  e.preventDefault();
+                  handleSendMessage();
+                }
+              }}
             />
             <div className="mt-3 flex gap-2">
-              <Button onClick={toggleListening} className={`control-btn ${isListening ? 'control-btn-red' : 'control-btn-green'}`} variant="default" size="sm" disabled={!speechRecognition}>
+              <Button onClick={toggleListening} className={`control-btn ${isListening ? 'control-btn-red' : 'control-btn-green'}`} variant="default" size="sm" disabled={!speechRecognition || isLoading}>
                 {isListening ? <MicOff className="mr-2 h-5 w-5" /> : <Mic className="mr-2 h-5 w-5" />}
                 {isListening ? 'إيقاف الاستماع' : 'تحدث'}
               </Button>
@@ -542,7 +567,7 @@ export default function AIPoweredDoctorAssistantPage() {
                   تحميل من ملف:
                 </Label>
                 <div className="file-input-custom">
-                  <input type="file" id="imageUpload" accept="image/*" onChange={handleImageUpload} ref={imageUploadRef} />
+                  <input type="file" id="imageUpload" accept="image/*" onChange={handleImageUpload} ref={imageUploadRef} disabled={isLoading}/>
                   <label htmlFor="imageUpload">
                     <FileUp className="h-5 w-5" /> اختر ملف
                   </label>
@@ -554,19 +579,19 @@ export default function AIPoweredDoctorAssistantPage() {
                 </Label>
                 <div className="flex flex-wrap gap-2">
                   {!cameraStream ? (
-                    <Button onClick={handleStartCamera} className="control-btn control-btn-indigo" variant="default" size="sm">
+                    <Button onClick={handleStartCamera} className="control-btn control-btn-indigo" variant="default" size="sm" disabled={isLoading}>
                       <Video className="mr-2 h-5 w-5" /> تشغيل الكاميرا
                     </Button>
                   ) : (
                     <>
-                      <Button onClick={handleStopCamera} className="control-btn control-btn-gray" variant="secondary" size="sm">
+                      <Button onClick={handleStopCamera} className="control-btn control-btn-gray" variant="secondary" size="sm" disabled={isLoading}>
                         <VideoOff className="mr-2 h-5 w-5" /> إيقاف الكاميرا
                       </Button>
-                       <Button onClick={switchCamera} className="control-btn control-btn-orange" variant="default" size="sm">
+                       <Button onClick={switchCamera} className="control-btn control-btn-orange" variant="default" size="sm" disabled={isLoading}>
                         <RefreshCw className="mr-2 h-5 w-5" /> تبديل
                       </Button>
-                      <Button onClick={captureImageFromCamera} className="control-btn control-btn-teal" variant="default" size="sm">
-                        <CameraIcon className="mr-2 h-5 w-5" /> التقاط
+                      <Button onClick={captureImageFromCamera} className="control-btn control-btn-teal" variant="default" size="sm" disabled={isLoading}>
+                        <CameraIcon className="mr-2 h-5 w-5" /> التقاط (لإرفاقها بالرسالة التالية)
                       </Button>
                     </>
                   )}
@@ -579,7 +604,7 @@ export default function AIPoweredDoctorAssistantPage() {
                 )}
               </div>
             </div>
-            {imagePreview && (
+            {imagePreview && ( // This preview is for the *next* message after manual upload/capture
               <div className="image-preview-container mt-6 flex justify-center items-center h-48 p-2">
                 <Image src={imagePreview} alt="معاينة الصورة" width={180} height={180} className="max-h-full max-w-full object-contain rounded-lg" data-ai-hint="medical image" />
               </div>
@@ -587,43 +612,30 @@ export default function AIPoweredDoctorAssistantPage() {
           </div>
 
           <Button
-            id="consultBtn"
-            onClick={handleConsult}
+            id="sendMessageBtn" // Renamed from consultBtn
+            onClick={handleSendMessage}
             disabled={isLoading}
             className="w-full bg-primary text-primary-foreground py-3 md:py-4 rounded-xl hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 transition duration-300 ease-in-out text-xl md:text-2xl font-bold flex items-center justify-center shadow-lg hover:shadow-xl"
           >
             {isLoading ? (
               <>
                 <Loader2 className="mr-3 h-6 w-6 animate-spin" />
-                جاري المعالجة...
+                جاري الإرسال...
               </>
             ) : (
               'إرسال الرسالة'
             )}
           </Button>
+          
+          <div className="mt-6 flex justify-center">
+            <Button onClick={toggleSpeaking} className={`control-btn ${isSpeaking ? 'control-btn-red' : 'control-btn-green'}`} variant="default" size="sm" disabled={isLoading || !chatHistory.some(msg => msg.role === 'model' && !msg.isStreaming && msg.text) }>
+              {isSpeaking ? <VolumeX className="mr-2 h-5 w-5" /> : <Volume2 className="mr-2 h-5 w-5" />}
+              {isSpeaking ? 'إيقاف القراءة' : 'استمع لآخر رد'}
+            </Button>
+          </div>
 
-          {aiResponse && (
-            <div className="mt-10 p-4 md:p-6 bg-card rounded-xl shadow-md border border-border ai-response-area">
-              <h3 className="text-lg md:text-xl font-bold text-foreground mb-4">
-                <Bot className="inline-block h-6 w-6 text-primary mr-2" /> آخر استجابة من المساعد الطبي:
-              </h3>
-              <div className="text-muted-foreground leading-relaxed whitespace-pre-wrap text-base md:text-lg">
-                <p><strong>ملخص:</strong> {aiResponse.summary}</p>
-                {aiResponse.suggestedTests && <p className="mt-2"><strong>الاقتراحات:</strong> {aiResponse.suggestedTests}</p>}
-              </div>
-              <div className="mt-4 flex gap-2">
-                 <Button onClick={toggleSpeaking} className={`control-btn ${isSpeaking ? 'control-btn-red' : 'control-btn-green'}`} variant="default" size="sm" disabled={!speechSynthesisUtterance || !aiResponse?.summary}>
-                  {isSpeaking ? <VolumeX className="mr-2 h-5 w-5" /> : <Volume2 className="mr-2 h-5 w-5" />}
-                  {isSpeaking ? 'إيقاف القراءة' : 'استمع'}
-                </Button>
-              </div>
-            </div>
-          )}
         </CardContent>
       </Card>
     </div>
   );
 }
-
-
-    
