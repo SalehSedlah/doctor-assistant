@@ -9,7 +9,7 @@ import {
   signInAnonymously,
   onAuthStateChanged,
   type Auth,
-  type User as FirebaseUser,
+  type FirebaseUser,
 } from "firebase/auth";
 import {
   getFirestore,
@@ -44,7 +44,7 @@ import {
   Image as ImageIcon,
   FileUp,
   TriangleAlert,
-  Volume2, // For speak button
+  // Volume2, // Removed as button is removed
 } from "lucide-react";
 
 import { streamedChat, type StreamedChatInput } from "@/ai/flows/streamed-chat-flow";
@@ -80,7 +80,6 @@ export default function AIPoweredDoctorAssistantPage() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
 
   const [isLoading, setIsLoading] = useState(false);
-  const [isSpeakingLoading, setIsSpeakingLoading] = useState(false); // For TTS button
   
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -96,12 +95,17 @@ export default function AIPoweredDoctorAssistantPage() {
   const cameraFeedRef = useRef<HTMLVideoElement>(null);
   const cameraCanvasRef = useRef<HTMLCanvasElement>(null);
 
-  const [speechRecognition, setSpeechRecognition] = useState<SpeechRecognition | null>(null);
+  const speechRecognitionRef = useRef<SpeechRecognition | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [currentFacingMode, setCurrentFacingMode] = useState<"user" | "environment">("user");
 
   const chatHistoryContainerRef = useRef<HTMLDivElement>(null);
+  const healthInputForSTTRef = useRef(""); // To hold latest healthInput for STT onend
+
+  useEffect(() => {
+    healthInputForSTTRef.current = healthInput;
+  }, [healthInput]);
 
   const showToast = useCallback((title: string, description: string, variant: "default" | "destructive" | "success" = "default") => {
     toast({ title, description, variant });
@@ -145,6 +149,7 @@ export default function AIPoweredDoctorAssistantPage() {
           history.push({ 
             id: doc.id, 
             ...data,
+            imageUrl: data.imageUrl === undefined ? null : data.imageUrl, // Ensure null if undefined
             timestamp: data.timestamp instanceof Timestamp ? data.timestamp : Timestamp.fromDate(new Date(data.timestamp.seconds * 1000)) 
           } as ChatMessage);
         });
@@ -207,15 +212,58 @@ export default function AIPoweredDoctorAssistantPage() {
       )
     );
   };
+
+  const playTextAsSpeech = useCallback(async (text: string) => {
+    if (!text.trim()) return;
+
+    if (audioPlayerRef.current) {
+      audioPlayerRef.current.pause();
+      audioPlayerRef.current.src = '';
+    }
+    
+    const ttsToastId = toast({ title: "تجهيز الصوت...", description: "يرجى الانتظار قليلاً.", variant: "default" });
+
+    try {
+      const ttsInput: SpeakTextInput = { text };
+      const result = await speakText(ttsInput);
+      
+      if (result.audioContent) {
+        const audioSrc = `data:audio/mp3;base64,${result.audioContent}`;
+        const audio = new Audio(audioSrc);
+        audioPlayerRef.current = audio;
+        ttsToastId.dismiss(); // Dismiss "preparing" toast
+        audio.play().catch(e => {
+          console.error("Audio play failed:", e);
+          showToast("خطأ في تشغيل الصوت", "لم نتمكن من تشغيل الرد الصوتي.", "destructive");
+        });
+        audio.onended = () => {
+          // Optional: action on audio end
+        };
+        audio.onerror = (e) => {
+          console.error("Error playing audio:", e);
+          showToast("خطأ في تشغيل الصوت", "لم نتمكن من تشغيل الرد الصوتي.", "destructive");
+        };
+      } else {
+        throw new Error("لم يتم إرجاع محتوى صوتي.");
+      }
+    } catch (error: any) {
+      console.error("Error in Text-to-Speech:", error);
+      showToast("خطأ في تحويل النص إلى كلام", error.message, "destructive");
+      ttsToastId.dismiss();
+    }
+  }, [toast]);
   
-  const finalizeStreamingAIMessageInChat = (clientId: string) => {
+  const finalizeStreamingAIMessageInChat = useCallback((clientId: string) => {
     let finalMessageToSave: Omit<ChatMessage, "id" | "clientId" | "isStreaming"> | null = null;
+    let finalMessageTextForTTS: string | null = null;
+
     setChatHistory(prev =>
       prev.map(msg => {
         if (msg.clientId === clientId && msg.role === 'model') {
           const finalMessage = { ...msg, isStreaming: false };
           const { id, clientId: cId, isStreaming: _, ...messagePayload } = finalMessage;
           finalMessageToSave = messagePayload;
+          finalMessageTextForTTS = finalMessage.text;
           return finalMessage;
         }
         return msg;
@@ -225,7 +273,10 @@ export default function AIPoweredDoctorAssistantPage() {
     if (finalMessageToSave) {
       saveChatMessage(finalMessageToSave);
     }
-  };
+    if (finalMessageTextForTTS) {
+      playTextAsSpeech(finalMessageTextForTTS);
+    }
+  }, [playTextAsSpeech]); // Added playTextAsSpeech to dependencies
 
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -255,34 +306,64 @@ export default function AIPoweredDoctorAssistantPage() {
     if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
       const SpeechRecognitionAPI = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       const recognitionInstance = new SpeechRecognitionAPI();
-      recognitionInstance.continuous = false;
+      recognitionInstance.continuous = false; // Keep false for distinct messages
+      recognitionInstance.interimResults = false; // Get final results
       recognitionInstance.lang = 'ar-SA';
 
       recognitionInstance.onstart = () => setIsListening(true);
-      recognitionInstance.onend = () => setIsListening(false);
+      
       recognitionInstance.onresult = (event: any) => {
         const transcript = event.results[0][0].transcript;
-        setHealthInput(transcript);
+        setHealthInput(transcript); // Update textarea for user to see
+        healthInputForSTTRef.current = transcript; // Also update ref for onend
       };
+
+      recognitionInstance.onend = () => {
+        setIsListening(false);
+        if (healthInputForSTTRef.current.trim()) {
+          // healthInput state might be slightly delayed, use ref for immediate value
+          // setHealthInput is async, so directly call handleSendMessage
+          // with the value from the ref to ensure it's the latest.
+          // The Textarea will update from healthInput state.
+          handleSendMessage(healthInputForSTTRef.current); 
+        }
+      };
+
       recognitionInstance.onerror = (event: any) => {
         console.error('Speech recognition error:', event.error);
-        showToast("خطأ في التعرف على الكلام", event.error, "destructive");
+        if (event.error !== 'no-speech') { // Ignore no-speech errors as they are common
+             showToast("خطأ في التعرف على الكلام", event.error, "destructive");
+        }
         setIsListening(false);
       };
-      setSpeechRecognition(recognitionInstance);
+      speechRecognitionRef.current = recognitionInstance;
     }
-  }, [showToast]);
+  }, [showToast]); // handleSendMessage will be wrapped in useCallback if needed
 
   const toggleListening = () => {
-    if (!speechRecognition) return;
+    if (!speechRecognitionRef.current) return;
+
+    if (audioPlayerRef.current && !audioPlayerRef.current.paused) {
+      audioPlayerRef.current.pause();
+      audioPlayerRef.current.src = '';
+    }
+
     if (isListening) {
-      speechRecognition.stop();
+      speechRecognitionRef.current.stop();
     } else {
       try {
         setHealthInput(""); 
-        speechRecognition.start();
-      } catch (e) {
-        showToast("خطأ", "الميكروفون قيد الاستخدام أو حدث خطأ.", "destructive");
+        healthInputForSTTRef.current = "";
+        speechRecognitionRef.current.start();
+      } catch (e: any) {
+        // Errors like "recognition already started"
+        if (e.name === 'InvalidStateError') {
+             showToast("الميكروفون يعمل بالفعل", "جاري الاستماع...", "default");
+        } else {
+            showToast("خطأ في الميكروفون", "لا يمكن بدء التعرف على الكلام.", "destructive");
+            console.error("STT start error:", e);
+        }
+        setIsListening(false); // Ensure state is correct
       }
     }
   };
@@ -345,6 +426,7 @@ export default function AIPoweredDoctorAssistantPage() {
         context.setTransform(1, 0, 0, 1, 0, 0);
       }
       const imageDataUrl = canvas.toDataURL('image/png');
+      setBase64Image(imageDataUrl); // Set base64Image directly
       setImagePreview(imageDataUrl); 
       showToast("تم التقاط الصورة", "سترفق مع رسالتك الحالية.", "success");
       return imageDataUrl; 
@@ -352,20 +434,25 @@ export default function AIPoweredDoctorAssistantPage() {
     return null;
   };
 
-  const handleSendMessage = async () => {
-    const userInput = healthInput.trim();
+  const handleSendMessage = useCallback(async (sttInput?: string) => {
+    const userInput = (typeof sttInput === 'string' ? sttInput : healthInput).trim();
     let currentImageToSend = base64Image; 
     const currentImagePreviewForUserMessage = imagePreview; 
 
+    if (audioPlayerRef.current && !audioPlayerRef.current.paused) {
+      audioPlayerRef.current.pause();
+      audioPlayerRef.current.src = '';
+    }
+
     if (cameraStream && !currentImageToSend) { 
-      const capturedImg = captureImageFromCamera();
+      const capturedImg = captureImageFromCamera(); // This now sets base64Image
       if (capturedImg) {
-        currentImageToSend = capturedImg;
+        currentImageToSend = capturedImg; // Will be the same as base64Image
       }
     }
     
     if (!userInput && !currentImageToSend) {
-      showToast("الإدخال مطلوب", "الرجاء كتابة رسالة أو إرفاق/التقاط صورة.", "destructive");
+      showToast("الإدخال مطلوب", "الرجاء كتابة رسالة أو إرفاق/التقاط صورة أو التحدث.", "destructive");
       return;
     }
 
@@ -390,65 +477,32 @@ export default function AIPoweredDoctorAssistantPage() {
 
     } catch (error: any) {
       console.error("Error calling AI streaming flow:", error);
+      let finalErrorText = `عذراً، حدث خطأ: ${error.message}`;
       setChatHistory(prev => prev.map(msg =>
           msg.clientId === aiMessageClientId
-              ? { ...msg, text: `عذراً، حدث خطأ: ${error.message}`, isStreaming: false }
+              ? { ...msg, text: finalErrorText, isStreaming: false }
               : msg
       ));
-      const errorMsgEntry = chatHistory.find(msg => msg.clientId === aiMessageClientId);
-      if (errorMsgEntry) {
-          const { id, clientId, isStreaming, ...payload } = {...errorMsgEntry, text: `عذراً، حدث خطأ: ${error.message}`, isStreaming: false};
-          saveChatMessage(payload);
-      }
+      const errorMsgEntry = chatHistory.find(msg => msg.clientId === aiMessageClientId); // This find might be stale
+      // Save the error message based on the clientId
+      const errorPayloadToSave : Omit<ChatMessage, "id" | "clientId" | "isStreaming"> = {
+        role: "model",
+        text: finalErrorText,
+        imageUrl: null,
+        timestamp: Timestamp.now(),
+      };
+      saveChatMessage(errorPayloadToSave); // Directly save a new error message if needed or update logic
+
       showToast("خطأ في المحادثة", error.message, "destructive");
     } finally {
       setIsLoading(false);
-      setHealthInput("");
+      setHealthInput(""); // Clear textarea
+      healthInputForSTTRef.current = ""; // Clear ref
       setBase64Image(null); 
       setImagePreview(null); 
       if (imageUploadRef.current) imageUploadRef.current.value = "";
     }
-  };
-
-  const handleSpeakLastResponse = async () => {
-    const lastAiMessage = [...chatHistory].reverse().find(msg => msg.role === 'model' && !msg.isStreaming && msg.text.trim() !== "");
-    if (!lastAiMessage || !lastAiMessage.text) {
-      showToast("لا يوجد رد لتشغيله", "لم يتمكن المساعد من الرد بعد أو الرد فارغ.", "default");
-      return;
-    }
-
-    setIsSpeakingLoading(true);
-    try {
-      if (audioPlayerRef.current) {
-        audioPlayerRef.current.pause();
-        audioPlayerRef.current.src = ''; // Release current audio object
-      }
-
-      const ttsInput: SpeakTextInput = { text: lastAiMessage.text };
-      const result = await speakText(ttsInput);
-      
-      if (result.audioContent) {
-        const audioSrc = `data:audio/mp3;base64,${result.audioContent}`;
-        const audio = new Audio(audioSrc);
-        audioPlayerRef.current = audio; // Store reference
-        audio.play();
-        audio.onended = () => setIsSpeakingLoading(false); // Reset loading when done
-        audio.onerror = (e) => {
-          console.error("Error playing audio:", e);
-          showToast("خطأ في تشغيل الصوت", "لم نتمكن من تشغيل الرد الصوتي.", "destructive");
-          setIsSpeakingLoading(false);
-        }
-      } else {
-        throw new Error("لم يتم إرجاع محتوى صوتي.");
-      }
-    } catch (error: any) {
-      console.error("Error in Text-to-Speech:", error);
-      showToast("خطأ في تحويل النص إلى كلام", error.message, "destructive");
-      setIsSpeakingLoading(false);
-    }
-    // Note: setIsSpeakingLoading(false) is primarily handled by audio events (onended, onerror)
-    // to ensure it only resets after playback attempt.
-  };
+  }, [healthInput, base64Image, imagePreview, cameraStream, currentFacingMode, showToast, finalizeStreamingAIMessageInChat, chatHistory]);
 
 
   return (
@@ -519,23 +573,11 @@ export default function AIPoweredDoctorAssistantPage() {
             )}
           </ScrollArea>
           
-          <div className="mt-3 mb-6 flex justify-end">
-            <Button 
-              onClick={handleSpeakLastResponse} 
-              className="control-btn control-btn-indigo" 
-              variant="default" 
-              size="sm" 
-              disabled={isSpeakingLoading || isLoading || chatHistory.filter(m=>m.role==='model' && !m.isStreaming && m.text.trim() !== "").length === 0}
-            >
-              {isSpeakingLoading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Volume2 className="mr-2 h-5 w-5" />}
-              {isSpeakingLoading ? 'جاري التجهيز...' : 'استمع لآخر رد'}
-            </Button>
-          </div>
+          {/* Removed Speak Last Response Button */}
 
-
-          <div className="mb-6">
+          <div className="mb-6 mt-6"> {/* Added mt-6 for spacing after chat history */}
             <Label htmlFor="healthInput" className="block text-foreground text-lg md:text-xl font-semibold mb-3">
-              <ClipboardList className="inline-block h-6 w-6 text-green-400 mr-2" /> أدخل رسالتك هنا:
+              <ClipboardList className="inline-block h-6 w-6 text-green-400 mr-2" /> أدخل رسالتك هنا أو استخدم الميكروفون:
             </Label>
             <Textarea
               id="healthInput"
@@ -552,9 +594,9 @@ export default function AIPoweredDoctorAssistantPage() {
               }}
             />
             <div className="mt-3 flex gap-2">
-              <Button onClick={toggleListening} className={`control-btn ${isListening ? 'control-btn-red' : 'control-btn-green'}`} variant="default" size="sm" disabled={!speechRecognition || isLoading}>
+              <Button onClick={toggleListening} className={`control-btn ${isListening ? 'control-btn-red' : 'control-btn-green'}`} variant="default" size="sm" disabled={!speechRecognitionRef.current || isLoading}>
                 {isListening ? <MicOff className="mr-2 h-5 w-5" /> : <Mic className="mr-2 h-5 w-5" />}
-                {isListening ? 'إيقاف الاستماع' : 'تحدث'}
+                {isListening ? 'إيقاف الاستماع' : 'تحدث (لإرسال تلقائي)'}
               </Button>
             </div>
           </div>
@@ -593,7 +635,7 @@ export default function AIPoweredDoctorAssistantPage() {
                         <RefreshCw className="mr-2 h-5 w-5" /> تبديل
                       </Button>
                       <Button onClick={captureImageFromCamera} className="control-btn control-btn-teal" variant="default" size="sm" disabled={isLoading}>
-                        <CameraIcon className="mr-2 h-5 w-5" /> التقاط (لإرفاقها بالرسالة التالية)
+                        <CameraIcon className="mr-2 h-5 w-5" /> التقاط (للإرفاق)
                       </Button>
                     </>
                   )}
@@ -615,7 +657,7 @@ export default function AIPoweredDoctorAssistantPage() {
 
           <Button
             id="sendMessageBtn" 
-            onClick={handleSendMessage}
+            onClick={() => handleSendMessage()} // Ensure it's called without args for button click
             disabled={isLoading}
             className="w-full bg-primary text-primary-foreground py-3 md:py-4 rounded-xl hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 transition duration-300 ease-in-out text-xl md:text-2xl font-bold flex items-center justify-center shadow-lg hover:shadow-xl"
           >
@@ -634,3 +676,4 @@ export default function AIPoweredDoctorAssistantPage() {
     </div>
   );
 }
+
