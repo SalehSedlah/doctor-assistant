@@ -74,7 +74,7 @@ export default function AIPoweredDoctorAssistantPage() {
   const { toast } = useToast();
 
   const [healthInput, setHealthInput] = useState("");
-  const [base64Image, setBase64Image = useState<string | null>(null);
+  const [base64Image, setBase64Image] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
 
   const [isLoading, setIsLoading] = useState(false);
@@ -107,7 +107,7 @@ export default function AIPoweredDoctorAssistantPage() {
   const showToast = useCallback((title: string, description: string, variant: "default" | "destructive" | "success" = "default") => {
     toast({ title, description, variant });
   }, [toast]);
-
+  
   const saveChatMessage = useCallback(async (message: Omit<ChatMessage, "id" | "clientId" | "isStreaming">) => {
     if (dbRef.current && currentUserId && appId) {
       try {
@@ -121,7 +121,7 @@ export default function AIPoweredDoctorAssistantPage() {
         showToast("فشل حفظ الرسالة", error.message, "destructive");
       }
     }
-  }, [currentUserId, appId, showToast]); // dbRef.current is stable via ref
+  }, [currentUserId, appId, showToast]);
 
   const addOptimisticMessageToChat = useCallback((role: "user" | "model", text: string, imageUrlInput?: string | null, isStreaming = false): string => {
     const clientId = `client-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
@@ -129,7 +129,7 @@ export default function AIPoweredDoctorAssistantPage() {
       clientId,
       role,
       text,
-      imageUrl: imageUrlInput === undefined ? null : imageUrlInput,
+      imageUrl: imageUrlInput === undefined ? null : (imageUrlInput === undefined ? null : imageUrlInput),
       timestamp: Timestamp.now(),
       isStreaming,
     };
@@ -172,7 +172,7 @@ export default function AIPoweredDoctorAssistantPage() {
       saveChatMessage(finalMessageToSave);
     }
   }, [saveChatMessage]);
-
+  
   const stopCameraInternal = useCallback(() => {
     if (cameraStream) {
       cameraStream.getTracks().forEach(track => track.stop());
@@ -207,7 +207,7 @@ export default function AIPoweredDoctorAssistantPage() {
       return imageDataUrl; 
     }
     return null;
-  }, [cameraStream, currentFacingMode, showToast]); // cameraFeedRef, cameraCanvasRef are refs
+  }, [cameraStream, currentFacingMode, showToast]);
 
   const handleSendMessage = useCallback(async (sttInput?: string) => {
     const userInput = (typeof sttInput === 'string' ? sttInput : healthInput).trim();
@@ -253,7 +253,6 @@ export default function AIPoweredDoctorAssistantPage() {
               ? { ...msg, text: finalErrorText, isStreaming: false }
               : msg
       ));
-      // Error message to AI for saving to DB was removed, so no direct saveChatMessage here for AI error.
       showToast("خطأ في المحادثة", error.message, "destructive");
     } finally {
       setIsLoading(false);
@@ -264,9 +263,9 @@ export default function AIPoweredDoctorAssistantPage() {
       if (imageUploadRef.current) imageUploadRef.current.value = "";
     }
   }, [
-    healthInput, base64Image, imagePreview, cameraStream, currentFacingMode, // state values
+    healthInput, base64Image, imagePreview, cameraStream, // state values (removed currentFacingMode, captureImageFromCamera, stopCameraInternal as they are memoized)
     showToast, addOptimisticMessageToChat, updateStreamingAIMessageInChat, finalizeStreamingAIMessageInChat, // memoized callbacks
-    captureImageFromCamera, stopCameraInternal // memoized callbacks
+    captureImageFromCamera, stopCameraInternal, currentFacingMode // Added back missing dependencies
   ]);
 
   useEffect(() => {
@@ -318,7 +317,7 @@ export default function AIPoweredDoctorAssistantPage() {
       });
       return () => unsubscribe();
     }
-  }, [currentUserId, appId, showToast]); // Removed saveChatMessage, not used here
+  }, [currentUserId, appId, showToast]);
 
    useEffect(() => {
     if (chatHistoryContainerRef.current) {
@@ -617,5 +616,7 @@ export default function AIPoweredDoctorAssistantPage() {
     </div>
   );
 }
+
+    
 
     
