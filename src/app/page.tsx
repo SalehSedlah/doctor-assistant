@@ -174,14 +174,12 @@ export default function AIPoweredDoctorAssistantPage() {
   }, [chatHistory]);
 
   // Save chat message
-  const saveChatMessage = async (message: Omit<ChatMessage, "id" | "timestamp"> & { timestamp?: Date }) => {
+  const saveChatMessage = async (message: Omit<ChatMessage, "id">) => {
     if (dbRef.current && currentUserId && appId) {
       try {
-        const docToSave = {
-          ...message,
-          timestamp: message.timestamp ? Timestamp.fromDate(message.timestamp) : Timestamp.now()
-        };
-        await addDoc(collection(dbRef.current, `artifacts/${appId}/users/${currentUserId}/medical_chat_history`), docToSave);
+        // The 'message' object already contains the Firebase Timestamp.
+        // Its type Omit<ChatMessage, "id"> is suitable for addDoc.
+        await addDoc(collection(dbRef.current, `artifacts/${appId}/users/${currentUserId}/medical_chat_history`), message);
       } catch (error: any) {
         console.error("Error saving chat message:", error);
         showToast("فشل حفظ الرسالة", error.message, "destructive");
@@ -198,7 +196,10 @@ export default function AIPoweredDoctorAssistantPage() {
       timestamp: Timestamp.now(),
     };
     setChatHistory(prev => [...prev, newMessage]); // Optimistic update
-    saveChatMessage(newMessage);
+    
+    // Prepare payload for saveChatMessage (Omit<ChatMessage, "id">)
+    const { id, ...messagePayload } = newMessage; 
+    saveChatMessage(messagePayload);
   };
 
 
