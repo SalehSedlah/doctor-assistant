@@ -9,7 +9,7 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
-import type { Part } from '@genkit-ai/googleai';
+import type { Part, GenerateResponse, ContentChunk } from '@genkit-ai/googleai'; // ContentChunk might be from core genkit
 
 const StreamedChatInputSchema = z.object({
   prompt: z.string().describe('The user message to the AI.'),
@@ -22,13 +22,19 @@ const StreamedChatInputSchema = z.object({
 });
 export type StreamedChatInput = z.infer<typeof StreamedChatInputSchema>;
 
+interface ExpectedGenerateStreamResponse {
+  stream: AsyncIterable<ContentChunk>;
+  response: Promise<GenerateResponse>;
+}
+
 // This server action will return an AsyncIterable for the client to consume.
 export async function* streamedChat(input: StreamedChatInput): AsyncGenerator<string, void, undefined> {
-  const { prompt: textPrompt, photoDataUri } = input;
+  const currentInput = input as StreamedChatInput; // Minor type assertion, unlikely to be the issue but harmless
+  const { prompt: textPrompt, photoDataUri } = currentInput;
   const parts: Part[] = [];
 
   // Add text part if provided
-  if (textPrompt) {
+  if (textPrompt && textPrompt.trim() !== "") {
     parts.push({ text: textPrompt });
   }
 
@@ -50,7 +56,7 @@ export async function* streamedChat(input: StreamedChatInput): AsyncGenerator<st
 
   // Determine the final prompt structure for Genkit
   // If it's just a single text part, send the string directly. Otherwise, send the array of parts.
-  const finalPromptForGenkit = parts.length === 1 && parts[0].text && !parts[0].media
+  const finalPromptForGenkit = parts.length === 1 && parts[0].text && !parts[0].media && parts.every(p => p.text && !p.media)
     ? parts[0].text
     : parts;
 
@@ -60,13 +66,30 @@ export async function* streamedChat(input: StreamedChatInput): AsyncGenerator<st
     return;
   }
   
-  const { stream, response: fullResponsePromise } = ai.generateStream({
-    prompt: finalPromptForGenkit,
-    // model: 'gemini-1.5-flash-latest', // Default is gemini-2.0-flash from genkit.ts
-    // config: { temperature: 0.7 } // Optional config
-  });
-
+  let streamGenResponse: ExpectedGenerateStreamResponse | undefined;
   try {
+    streamGenResponse = ai.generateStream({
+      prompt: finalPromptForGenkit,
+      // model: 'gemini-1.5-flash-latest', // Default is gemini-2.0-flash from genkit.ts
+      // config: { temperature: 0.7 } // Optional config
+    }) as ExpectedGenerateStreamResponse; // Explicit type assertion
+
+    // Robust check for the structure returned by ai.generateStream
+    if (
+      !streamGenResponse ||
+      typeof streamGenResponse.stream !== 'object' ||
+      streamGenResponse.stream === null ||
+      typeof streamGenResponse.stream[Symbol.asyncIterator] !== 'function' ||
+      !streamGenResponse.response ||
+      typeof streamGenResponse.response.then !== 'function' // Check if response is a Promise
+    ) {
+      console.error("AI stream generation did not return a valid stream and response object:", streamGenResponse);
+      yield `عذرًا، حدث خطأ في تهيئة بث الرد من الذكاء الاصطناعي. يرجى المحاولة مرة أخرى.`;
+      return;
+    }
+
+    const { stream, response: fullResponsePromise } = streamGenResponse;
+
     for await (const chunk of stream) {
       if (chunk.text) { 
         yield chunk.text;
@@ -74,8 +97,10 @@ export async function* streamedChat(input: StreamedChatInput): AsyncGenerator<st
     }
     await fullResponsePromise; 
   } catch (error) {
-    console.error("Error during AI stream generation:", error);
+    console.error("Error during AI stream generation or processing:", error);
     const errorMessage = error instanceof Error ? error.message : "An error occurred";
+    // Ensure we always yield, even in case of error, to maintain async generator contract
     yield `عذرًا، حدث خطأ أثناء إنشاء الرد: ${errorMessage}`;
   }
 }
+
