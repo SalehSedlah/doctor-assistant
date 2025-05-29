@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { Toaster } from "@/components/ui/toaster";
+// import { Toaster } from "@/components/ui/toaster"; // Toaster removed as per new design
 
 const inter = Inter({
   subsets: ["latin", "arabic"],
@@ -22,7 +22,7 @@ export default function RootLayout({
     <html lang="ar" dir="rtl">
       <body className={`${inter.variable} antialiased`}>
         {children}
-        <Toaster />
+        {/* <Toaster /> Removed */}
       </body>
     </html>
   );

@@ -4,91 +4,69 @@
 
 body {
   font-family: var(--font-inter), Arial, Helvetica, sans-serif; /* Use Inter font */
+  direction: rtl; /* Right-to-left for Arabic */
+  background: linear-gradient(to bottom right, hsl(222, 23%, 11%), hsl(217, 19%, 23%), hsl(222, 23%, 11%)); /* Dark blue-gray gradient from user HTML #1a202c, #2d3748 */
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  color: hsl(var(--foreground)); /* Default text color for dark mode */
 }
 
 @layer base {
   :root {
-    --background: 220 13% 18%; /* Dark Slate Gray #2d3748 (approx) */
+    /* Theme from previous state, slightly adjusted to match user HTML dark theme intent */
+    --background: 220 13% 11%; /* Darker background like #1a202c */
     --foreground: 215 20% 90%; /* Light Gray #e2e8f0 */
 
-    --card: 217 20% 23%; /* Darker card background #2d3748 */
+    --card: 217 19% 23%; /* Darker card background #2d3748 */
     --card-foreground: 215 20% 90%; /* Light Gray #e2e8f0 */
 
-    --popover: 217 20% 23%;
+    --popover: 217 19% 23%;
     --popover-foreground: 215 20% 90%;
 
-    --primary: 243 75% 58%; /* Deep Indigo #4F46E5 */
-    --primary-foreground: 215 20% 98%; /* Lighter for contrast */
+    --primary: 210 80% 58%; /* Lighter blue like #63b3ed for primary actions */
+    --primary-foreground: 215 20% 98%;
 
     --secondary: 220 14% 35%; /* #4a5568 for secondary elements */
     --secondary-foreground: 215 20% 90%;
 
     --muted: 220 14% 28%; /* #374151 */
-    --muted-foreground: 215 15% 65%; /* #a0a7b5 */
+    --muted-foreground: 215 15% 65%; /* #a0a7b5 placeholder text */
 
-    --accent: 257 92% 76%; /* Soft Lavender #A78BFA */
-    --accent-foreground: 240 5.9% 10%; /* Darker for contrast on lavender */
+    --accent: 210 70% 60%; /* Adjusted accent, can be Lighter Blue */
+    --accent-foreground: 240 5.9% 10%;
 
-    --destructive: 0 72% 51%; /* Red #dc2626 */
+    --destructive: 350 72% 51%; /* Red for errors/destructive actions */
     --destructive-foreground: 0 0% 98%;
+    
+    --warning-bg: 50 100% 87%; /* Light yellow #fefcbf */
+    --warning-fg: 40 70% 43%; /* Darker yellow #b7791f */
+    --warning-border: 50 85% 67%; /* #f6e05e */
 
-    --border: 220 14% 35%; /* #4a5568 */
-    --input: 220 14% 28%; /* #374151 */
-    --ring: 257 92% 76%; /* Soft Lavender for focus rings */
+    --info-bg: 207 76% 90%; /* Light blue #bee3f8 */
+    --info-fg: 213 64% 40%; /* Darker blue #2b6cb0 */
+    --info-border: 207 78% 68%; /* #63b3ed */
 
-    --radius: 1rem; /* Larger radius from user's design (1.5rem on card, 0.75rem on inputs) */
 
+    --border: 220 14% 35%; /* #4a5568 subtle borders */
+    --input: 217 19% 23%; /* #2d3748 input background */
+    --ring: 210 80% 68%; /* Lighter blue for focus rings */
+
+    --radius: 0.75rem; /* Base radius, card is 1.5rem in user HTML */
+    
     /* Chart colors (can be adjusted if charts are used) */
     --chart-1: 243 75% 58%;
     --chart-2: 257 92% 76%;
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
-    
-    /* Custom from user's HTML */
-    --dark-blue-gray-start: 222 39% 11%; /* #1a202c */
-    --dark-blue-gray-mid: 217 20% 23%; /* #2d3748 */
   }
 
-  /* Enforce dark theme as default, remove .dark selector for variables */
-  :root { /* Combined light and dark into a single dark theme */
-    --background: 220 13% 18%; /* Dark Slate Gray #2d3748 (approx for body gradient) */
-    --foreground: 215 20% 90%; /* Light Gray #e2e8f0 */
-
-    --card: 217 20% 23%; /* Darker card background #2d3748 */
-    --card-foreground: 215 20% 90%; /* Light Gray #e2e8f0 */
-
-    --popover: 217 20% 23%;
-    --popover-foreground: 215 20% 90%;
-
-    --primary: 243 75% 58%; /* Deep Indigo #4F46E5 */
-    --primary-foreground: 215 20% 98%; /* Lighter for contrast */
-
-    --secondary: 220 14% 35%; /* #4a5568 for secondary elements */
-    --secondary-foreground: 215 20% 90%;
-
-    --muted: 220 14% 28%; /* #374151 */
-    --muted-foreground: 215 15% 65%; /* #a0a7b5 */
-
-    --accent: 257 92% 76%; /* Soft Lavender #A78BFA */
-    --accent-foreground: 240 5.9% 10%; /* Darker for contrast on lavender */
-
-    --destructive: 0 72% 51%; /* Red #dc2626 */
-    --destructive-foreground: 0 0% 98%;
-
-    --border: 220 14% 35%; /* #4a5568 */
-    --input: 220 14% 28%; /* #374151 */
-    --ring: 257 92% 76%; /* Soft Lavender for focus rings */
-    
-    /* Sidebar (if used, keeping for completeness) */
-    --sidebar-background: 222 39% 11%; /* #1a202c */
-    --sidebar-foreground: 215 20% 90%;
-    --sidebar-primary: 243 75% 58%;
-    --sidebar-primary-foreground: 215 20% 98%;
-    --sidebar-accent: 257 92% 76%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 14% 35%;
-    --sidebar-ring: 257 92% 76%;
+  /* Enforce dark theme as default */
+  :root {
+    color-scheme: dark;
   }
 }
 
@@ -97,30 +75,70 @@ body {
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
-    /* Applying the gradient from user's HTML */
-    background: linear-gradient(to bottom right, hsl(var(--dark-blue-gray-start)), hsl(var(--dark-blue-gray-mid)), hsl(var(--dark-blue-gray-start)));
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 1rem;
+    @apply text-foreground;
+    /* Gradient is set directly on body tag above */
   }
 }
 
-/* Custom styles from user's HTML that are not easily mapped to ShadCN theme or need overrides */
+/* Styles adapted from user's HTML */
+.container-card {
+    @apply bg-card text-card-foreground p-10 rounded-3xl shadow-2xl border border-border; /* 1.5rem is 24px, Card component uses rounded-lg (0.5rem), use rounded-3xl for 1.5rem */
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.1);
+}
+
+.disclaimer-box {
+    background-color: hsl(0, 58%, 30%); /* Darker red #7f1d1d */
+    color: hsl(0, 86%, 81%); /* Lighter red text #fca5a5 */
+    @apply border border-destructive p-5 rounded-xl relative mb-8 shadow-sm;
+}
+.disclaimer-box strong {
+    color: hsl(0, 80%, 97%); /* Even lighter red for strong text #fef2f2 */
+}
+
+.user-id-display {
+    background-color: hsl(var(--secondary));
+    color: hsl(var(--foreground));
+    @apply p-2 px-4 rounded-xl mb-6 text-sm text-center break-all;
+}
+
+.chat-history-container {
+    background-color: hsl(222, 23%, 11%); /* Very dark background #1a202c */
+    @apply border border-border rounded-xl shadow-inner max-h-[400px] overflow-y-auto p-6 mb-6;
+}
+
+.chat-message {
+    @apply mb-4 p-3 px-4 rounded-xl leading-relaxed shadow-sm;
+}
+.chat-message.user {
+    background-color: hsl(220, 20%, 30%); /* Darker cyan like #3a455a */
+    @apply text-foreground text-right ml-[20%] rounded-br-none;
+}
+.chat-message.ai {
+    background-color: hsl(308, 15%, 25%); /* Darker pink like #4a3748 */
+    @apply text-foreground text-left mr-[20%] rounded-bl-none;
+}
+.chat-message img {
+    @apply max-w-full h-auto rounded-lg mt-2 border border-muted;
+}
+
+.input-field {
+    @apply w-full p-3 border border-border rounded-xl text-base md:text-lg leading-normal transition-all duration-200 ease-in-out shadow-inner bg-input text-foreground placeholder-muted-foreground;
+}
+.input-field:focus {
+    @apply outline-none border-primary ring-2 ring-ring/50;
+}
+
 .control-btn {
     @apply text-white px-3 py-2 md:px-5 md:py-3 rounded-full cursor-pointer transition-all duration-300 ease-in-out flex items-center justify-center text-sm md:text-base font-semibold shadow-md hover:shadow-lg hover:-translate-y-0.5;
 }
-
 .control-btn-green {
     @apply bg-[#48bb78] hover:bg-[#38a169];
 }
-.control-btn-red {
+.control-btn-red { /* For active/listening mic, or stop buttons that indicate an active state ending */
     @apply bg-[#fc8181] hover:bg-[#e53e3e];
 }
-.control-btn-gray {
-     @apply bg-secondary hover:bg-muted; /* Using theme colors */
+.control-btn-gray { /* Secondary actions like 'stop' */
+     @apply bg-secondary hover:bg-muted text-secondary-foreground;
 }
 .control-btn-indigo {
     @apply bg-[#7f9cf6] hover:bg-[#667eea];
@@ -131,62 +149,52 @@ body {
 .control-btn-orange {
     @apply bg-[#f6ad55] hover:bg-[#ed8936];
 }
+.control-btn-blue { /* For main send button */
+    @apply bg-blue-600 hover:bg-blue-700 text-white;
+}
 
-.input-field {
-    @apply w-full p-3 border border-input rounded-xl text-base md:text-lg leading-normal transition-all duration-200 ease-in-out shadow-inner bg-card text-foreground placeholder-muted-foreground;
-}
-.input-field:focus {
-    @apply outline-none border-accent ring-2 ring-accent/50;
-}
 
 .file-input-custom input[type="file"] {
     display: none;
 }
 .file-input-custom label {
-    @apply bg-secondary text-foreground p-3 px-5 rounded-xl border border-primary cursor-pointer inline-flex items-center gap-2 font-semibold transition-all duration-200 ease-in-out hover:bg-muted hover:border-accent;
+    background-color: hsl(var(--secondary));
+    color: hsl(var(--foreground));
+    @apply p-3 px-5 rounded-xl border border-primary cursor-pointer inline-flex items-center gap-2 font-semibold transition-all duration-200 ease-in-out hover:bg-muted hover:border-accent;
 }
 
-.video-container-active { /* Renamed to avoid conflict if video-container is a class */
-    @apply border-2 border-accent shadow-lg;
+.video-container-active { /* Was video-container in user HTML */
+    @apply border-2 border-purple-400 shadow-lg rounded-lg overflow-hidden; /* #a78bfa is a purple color */
 }
 
 .image-preview-container {
-    @apply border-2 border-dashed border-border bg-background rounded-xl;
+    border: 2px dashed hsl(var(--muted)); /* Darker dashed grey border */
+    background-color: hsl(222, 23%, 11%); /* Very dark background #1a202c */
+    @apply rounded-xl flex justify-center items-center p-2;
 }
 
-.chat-history-container {
-    background-color: hsl(var(--dark-blue-gray-start)); /* #1a202c */
-    @apply border border-border rounded-xl shadow-inner max-h-[400px] overflow-y-auto p-6 mb-6;
+.message-box-global { /* For the new messageBox div */
+    @apply p-4 rounded-lg mt-6 text-center font-semibold transition-all duration-300 ease-in-out;
+}
+.message-box-global.error {
+    background-color: hsl(0, 72%, 91%); /* Light red #fed7d7 */
+    color: hsl(0, 60%, 40%); /* Darker red #c53030 */
+    border: 1px solid hsl(0, 96%, 75%); /* #fc8181 */
+}
+.message-box-global.info {
+    background-color: hsl(207, 76%, 90%); /* Light blue #bee3f8 */
+    color: hsl(213, 64%, 31%); /* Darker blue #2b6cb0 */
+    border: 1px solid hsl(207, 78%, 68%); /* #63b3ed */
+}
+.message-box-global.warning {
+    background-color: hsl(58, 92%, 87%); /* Light yellow #fefcbf */
+    color: hsl(42, 72%, 43%); /* Darker yellow #b7791f */
+    border: 1px solid hsl(52, 88%, 67%); /* #f6e05e */
 }
 
-.chat-message {
-    @apply mb-4 p-3 px-4 rounded-xl leading-relaxed shadow-sm;
-}
-.chat-message.user {
-    background-color: hsl(220 15% 30%); /* Slightly lighter than card for user */
-    @apply text-foreground text-right ml-[20%] rounded-br-none;
-}
-.chat-message.ai {
-    background-color: hsl(220 15% 25%); /* Slightly different for AI */
-    @apply text-foreground text-left mr-[20%] rounded-bl-none;
-}
-.chat-message img {
-    @apply max-w-full h-auto rounded-lg mt-2 border border-border;
-}
-
-.disclaimer-box { /* Renamed from disclaimer to avoid conflict */
-    background-color: hsl(0 60% 25%); /* Darker red: #7f1d1d */
-    color: hsl(0 80% 80%); /* Lighter red text: #fca5a5 */
-    @apply border border-destructive p-5 py-4 rounded-xl relative mb-8 shadow-sm;
-}
-.disclaimer-box strong {
-    color: hsl(0 0% 98%); /* #fef2f2 */
-}
-
-.user-id-display {
-    @apply bg-secondary text-foreground p-2 px-4 rounded-xl mb-6 text-sm text-center break-all;
-}
-
-.ai-response-area {
-    @apply mt-10 p-6 bg-card rounded-xl shadow-md;
+/* Loader from user HTML */
+.loader-custom {
+    border: 4px solid hsl(var(--secondary)); /* Dark grey */
+    border-top: 4px solid hsl(var(--primary)); /* Lighter blue */
+    @apply rounded-full w-[30px] h-[30px] animate-spin;
 }
