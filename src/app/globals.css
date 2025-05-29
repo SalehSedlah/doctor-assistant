@@ -3,78 +3,92 @@
 @tailwind utilities;
 
 body {
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-inter), Arial, Helvetica, sans-serif; /* Use Inter font */
 }
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 0 0% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 0 0% 3.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 3.9%;
-    --primary: 0 0% 9%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
-    --accent: 0 0% 96.1%;
-    --accent-foreground: 0 0% 9%;
-    --destructive: 0 84.2% 60.2%;
+    --background: 220 13% 18%; /* Dark Slate Gray #2d3748 (approx) */
+    --foreground: 215 20% 90%; /* Light Gray #e2e8f0 */
+
+    --card: 217 20% 23%; /* Darker card background #2d3748 */
+    --card-foreground: 215 20% 90%; /* Light Gray #e2e8f0 */
+
+    --popover: 217 20% 23%;
+    --popover-foreground: 215 20% 90%;
+
+    --primary: 243 75% 58%; /* Deep Indigo #4F46E5 */
+    --primary-foreground: 215 20% 98%; /* Lighter for contrast */
+
+    --secondary: 220 14% 35%; /* #4a5568 for secondary elements */
+    --secondary-foreground: 215 20% 90%;
+
+    --muted: 220 14% 28%; /* #374151 */
+    --muted-foreground: 215 15% 65%; /* #a0a7b5 */
+
+    --accent: 257 92% 76%; /* Soft Lavender #A78BFA */
+    --accent-foreground: 240 5.9% 10%; /* Darker for contrast on lavender */
+
+    --destructive: 0 72% 51%; /* Red #dc2626 */
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
-    --ring: 0 0% 3.9%;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
+
+    --border: 220 14% 35%; /* #4a5568 */
+    --input: 220 14% 28%; /* #374151 */
+    --ring: 257 92% 76%; /* Soft Lavender for focus rings */
+
+    --radius: 1rem; /* Larger radius from user's design (1.5rem on card, 0.75rem on inputs) */
+
+    /* Chart colors (can be adjusted if charts are used) */
+    --chart-1: 243 75% 58%;
+    --chart-2: 257 92% 76%;
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
-    --radius: 0.5rem;
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    
+    /* Custom from user's HTML */
+    --dark-blue-gray-start: 222 39% 11%; /* #1a202c */
+    --dark-blue-gray-mid: 217 20% 23%; /* #2d3748 */
   }
-  .dark {
-    --background: 0 0% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 0 0% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 0 0% 9%;
-    --secondary: 0 0% 14.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 14.9%;
-    --muted-foreground: 0 0% 63.9%;
-    --accent: 0 0% 14.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
+
+  /* Enforce dark theme as default, remove .dark selector for variables */
+  :root { /* Combined light and dark into a single dark theme */
+    --background: 220 13% 18%; /* Dark Slate Gray #2d3748 (approx for body gradient) */
+    --foreground: 215 20% 90%; /* Light Gray #e2e8f0 */
+
+    --card: 217 20% 23%; /* Darker card background #2d3748 */
+    --card-foreground: 215 20% 90%; /* Light Gray #e2e8f0 */
+
+    --popover: 217 20% 23%;
+    --popover-foreground: 215 20% 90%;
+
+    --primary: 243 75% 58%; /* Deep Indigo #4F46E5 */
+    --primary-foreground: 215 20% 98%; /* Lighter for contrast */
+
+    --secondary: 220 14% 35%; /* #4a5568 for secondary elements */
+    --secondary-foreground: 215 20% 90%;
+
+    --muted: 220 14% 28%; /* #374151 */
+    --muted-foreground: 215 15% 65%; /* #a0a7b5 */
+
+    --accent: 257 92% 76%; /* Soft Lavender #A78BFA */
+    --accent-foreground: 240 5.9% 10%; /* Darker for contrast on lavender */
+
+    --destructive: 0 72% 51%; /* Red #dc2626 */
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
-    --ring: 0 0% 83.1%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+
+    --border: 220 14% 35%; /* #4a5568 */
+    --input: 220 14% 28%; /* #374151 */
+    --ring: 257 92% 76%; /* Soft Lavender for focus rings */
+    
+    /* Sidebar (if used, keeping for completeness) */
+    --sidebar-background: 222 39% 11%; /* #1a202c */
+    --sidebar-foreground: 215 20% 90%;
+    --sidebar-primary: 243 75% 58%;
+    --sidebar-primary-foreground: 215 20% 98%;
+    --sidebar-accent: 257 92% 76%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 14% 35%;
+    --sidebar-ring: 257 92% 76%;
   }
 }
 
@@ -84,5 +98,95 @@ body {
   }
   body {
     @apply bg-background text-foreground;
+    /* Applying the gradient from user's HTML */
+    background: linear-gradient(to bottom right, hsl(var(--dark-blue-gray-start)), hsl(var(--dark-blue-gray-mid)), hsl(var(--dark-blue-gray-start)));
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
   }
+}
+
+/* Custom styles from user's HTML that are not easily mapped to ShadCN theme or need overrides */
+.control-btn {
+    @apply text-white px-3 py-2 md:px-5 md:py-3 rounded-full cursor-pointer transition-all duration-300 ease-in-out flex items-center justify-center text-sm md:text-base font-semibold shadow-md hover:shadow-lg hover:-translate-y-0.5;
+}
+
+.control-btn-green {
+    @apply bg-[#48bb78] hover:bg-[#38a169];
+}
+.control-btn-red {
+    @apply bg-[#fc8181] hover:bg-[#e53e3e];
+}
+.control-btn-gray {
+     @apply bg-secondary hover:bg-muted; /* Using theme colors */
+}
+.control-btn-indigo {
+    @apply bg-[#7f9cf6] hover:bg-[#667eea];
+}
+.control-btn-teal {
+    @apply bg-[#4fd1c5] hover:bg-[#38b2ac];
+}
+.control-btn-orange {
+    @apply bg-[#f6ad55] hover:bg-[#ed8936];
+}
+
+.input-field {
+    @apply w-full p-3 border border-input rounded-xl text-base md:text-lg leading-normal transition-all duration-200 ease-in-out shadow-inner bg-card text-foreground placeholder-muted-foreground;
+}
+.input-field:focus {
+    @apply outline-none border-accent ring-2 ring-accent/50;
+}
+
+.file-input-custom input[type="file"] {
+    display: none;
+}
+.file-input-custom label {
+    @apply bg-secondary text-foreground p-3 px-5 rounded-xl border border-primary cursor-pointer inline-flex items-center gap-2 font-semibold transition-all duration-200 ease-in-out hover:bg-muted hover:border-accent;
+}
+
+.video-container-active { /* Renamed to avoid conflict if video-container is a class */
+    @apply border-2 border-accent shadow-lg;
+}
+
+.image-preview-container {
+    @apply border-2 border-dashed border-border bg-background rounded-xl;
+}
+
+.chat-history-container {
+    background-color: hsl(var(--dark-blue-gray-start)); /* #1a202c */
+    @apply border border-border rounded-xl shadow-inner max-h-[400px] overflow-y-auto p-6 mb-6;
+}
+
+.chat-message {
+    @apply mb-4 p-3 px-4 rounded-xl leading-relaxed shadow-sm;
+}
+.chat-message.user {
+    background-color: hsl(220 15% 30%); /* Slightly lighter than card for user */
+    @apply text-foreground text-right ml-[20%] rounded-br-none;
+}
+.chat-message.ai {
+    background-color: hsl(220 15% 25%); /* Slightly different for AI */
+    @apply text-foreground text-left mr-[20%] rounded-bl-none;
+}
+.chat-message img {
+    @apply max-w-full h-auto rounded-lg mt-2 border border-border;
+}
+
+.disclaimer-box { /* Renamed from disclaimer to avoid conflict */
+    background-color: hsl(0 60% 25%); /* Darker red: #7f1d1d */
+    color: hsl(0 80% 80%); /* Lighter red text: #fca5a5 */
+    @apply border border-destructive p-5 py-4 rounded-xl relative mb-8 shadow-sm;
+}
+.disclaimer-box strong {
+    color: hsl(0 0% 98%); /* #fef2f2 */
+}
+
+.user-id-display {
+    @apply bg-secondary text-foreground p-2 px-4 rounded-xl mb-6 text-sm text-center break-all;
+}
+
+.ai-response-area {
+    @apply mt-10 p-6 bg-card rounded-xl shadow-md;
 }

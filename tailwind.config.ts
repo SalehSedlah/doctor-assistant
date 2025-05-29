@@ -1,14 +1,24 @@
 import type { Config } from "tailwindcss";
 
 export default {
-    darkMode: ["class"],
+    darkMode: ["class"], // Keep class strategy, but theme will be dark by default
     content: [
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
+    container: {
+      center: true,
+      padding: "2rem",
+      screens: {
+        "2xl": "1400px",
+      },
+    },
   	extend: {
+      fontFamily: {
+        sans: ["var(--font-inter)", "system-ui", "sans-serif"], // Add Inter font
+      },
   		colors: {
   			background: 'hsl(var(--background))',
   			foreground: 'hsl(var(--foreground))',
@@ -62,9 +72,12 @@ export default {
   			}
   		},
   		borderRadius: {
-  			lg: 'var(--radius)',
-  			md: 'calc(var(--radius) - 2px)',
-  			sm: 'calc(var(--radius) - 4px)'
+  			lg: "var(--radius)",
+  			md: "calc(var(--radius) - 0.25rem)", // Adjusted based on user example (0.75rem for input, 1.5rem for card)
+  			sm: "calc(var(--radius) - 0.5rem)",
+        xl: "calc(var(--radius) + 0.25rem)", // For elements like card outer, input fields
+        '2xl': "calc(var(--radius) + 0.5rem)",
+        '3xl': "calc(var(--radius) + 1rem)", // For main container card
   		},
   		keyframes: {
   			'accordion-down': {

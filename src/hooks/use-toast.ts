@@ -1,3 +1,4 @@
+
 "use client"
 
 // Inspired by react-hot-toast library
@@ -7,15 +8,19 @@ import type {
   ToastActionElement,
   ToastProps,
 } from "@/components/ui/toast"
+import { type VariantProps } from "class-variance-authority"; // Assuming toastVariants is exported from toast.tsx
+import type { toastVariants } from "@/components/ui/toast"; // Adjust path if necessary
 
-const TOAST_LIMIT = 1
-const TOAST_REMOVE_DELAY = 1000000
+
+const TOAST_LIMIT = 3 // Allow a few toasts
+const TOAST_REMOVE_DELAY = 5000 // 5 seconds
 
 type ToasterToast = ToastProps & {
   id: string
   title?: React.ReactNode
   description?: React.ReactNode
   action?: ToastActionElement
+  variant?: VariantProps<typeof toastVariants>["variant"] // Include variant
 }
 
 const actionTypes = {
@@ -60,7 +65,7 @@ const toastTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
 
 const addToRemoveQueue = (toastId: string) => {
   if (toastTimeouts.has(toastId)) {
-    return
+    clearTimeout(toastTimeouts.get(toastId)) // Clear existing timeout if any
   }
 
   const timeout = setTimeout(() => {
@@ -93,8 +98,6 @@ export const reducer = (state: State, action: Action): State => {
     case "DISMISS_TOAST": {
       const { toastId } = action
 
-      // ! Side effects ! - This could be extracted into a dismissToast() action,
-      // but I'll keep it here for simplicity
       if (toastId) {
         addToRemoveQueue(toastId)
       } else {
@@ -140,7 +143,10 @@ function dispatch(action: Action) {
   })
 }
 
-type Toast = Omit<ToasterToast, "id">
+type Toast = Omit<ToasterToast, "id"> & {
+  variant?: "default" | "destructive" | "success"; // Make variant explicit here
+}
+
 
 function toast({ ...props }: Toast) {
   const id = genId()
@@ -163,6 +169,10 @@ function toast({ ...props }: Toast) {
       },
     },
   })
+
+  // Auto-dismiss after a delay
+  addToRemoveQueue(id);
+
 
   return {
     id: id,
