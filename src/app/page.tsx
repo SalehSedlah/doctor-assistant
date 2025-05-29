@@ -44,10 +44,11 @@ import {
   Image as ImageIcon,
   FileUp,
   TriangleAlert,
+  Volume2, // For speak button
 } from "lucide-react";
 
-// Import the new streaming chat flow
 import { streamedChat, type StreamedChatInput } from "@/ai/flows/streamed-chat-flow";
+import { speakText, type SpeakTextInput } from "@/ai/flows/speak-text-flow";
 
 
 // Firebase configuration
@@ -62,13 +63,13 @@ const firebaseConfig = {
 };
 
 interface ChatMessage {
-  id?: string; // Firestore document ID
-  clientId?: string; // Client-side unique ID for optimistic updates & streaming
+  id?: string; 
+  clientId?: string; 
   role: "user" | "model";
   text: string;
   imageUrl?: string | null;
   timestamp: Timestamp;
-  isStreaming?: boolean; // To indicate AI message is currently streaming
+  isStreaming?: boolean;
 }
 
 export default function AIPoweredDoctorAssistantPage() {
@@ -79,6 +80,7 @@ export default function AIPoweredDoctorAssistantPage() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
 
   const [isLoading, setIsLoading] = useState(false);
+  const [isSpeakingLoading, setIsSpeakingLoading] = useState(false); // For TTS button
   
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -87,6 +89,8 @@ export default function AIPoweredDoctorAssistantPage() {
   const appRef = useRef<FirebaseApp | null>(null);
   const authRef = useRef<Auth | null>(null);
   const dbRef = useRef<Firestore | null>(null);
+  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+
 
   const imageUploadRef = useRef<HTMLInputElement>(null);
   const cameraFeedRef = useRef<HTMLVideoElement>(null);
@@ -162,7 +166,6 @@ export default function AIPoweredDoctorAssistantPage() {
   const saveChatMessage = async (message: Omit<ChatMessage, "id" | "clientId" | "isStreaming">) => {
     if (dbRef.current && currentUserId && appId) {
       try {
-        // Ensure imageUrl is null if undefined before saving
         const messageToSave = {
           ...message,
           imageUrl: message.imageUrl === undefined ? null : message.imageUrl,
@@ -175,13 +178,13 @@ export default function AIPoweredDoctorAssistantPage() {
     }
   };
   
-  const addOptimisticMessageToChat = (role: "user" | "model", text: string, imageUrl?: string | null, isStreaming = false): string => {
+  const addOptimisticMessageToChat = (role: "user" | "model", text: string, imageUrlInput?: string | null, isStreaming = false): string => {
     const clientId = `client-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     const newMessage: ChatMessage = {
       clientId,
       role,
       text,
-      imageUrl: imageUrl === undefined ? null : imageUrl, // Ensure null for undefined
+      imageUrl: imageUrlInput === undefined ? null : imageUrlInput,
       timestamp: Timestamp.now(),
       isStreaming,
     };
@@ -358,7 +361,6 @@ export default function AIPoweredDoctorAssistantPage() {
       const capturedImg = captureImageFromCamera();
       if (capturedImg) {
         currentImageToSend = capturedImg;
-        // imagePreview for user message is already set by captureImageFromCamera
       }
     }
     
@@ -407,6 +409,47 @@ export default function AIPoweredDoctorAssistantPage() {
       if (imageUploadRef.current) imageUploadRef.current.value = "";
     }
   };
+
+  const handleSpeakLastResponse = async () => {
+    const lastAiMessage = [...chatHistory].reverse().find(msg => msg.role === 'model' && !msg.isStreaming && msg.text.trim() !== "");
+    if (!lastAiMessage || !lastAiMessage.text) {
+      showToast("لا يوجد رد لتشغيله", "لم يتمكن المساعد من الرد بعد أو الرد فارغ.", "default");
+      return;
+    }
+
+    setIsSpeakingLoading(true);
+    try {
+      if (audioPlayerRef.current) {
+        audioPlayerRef.current.pause();
+        audioPlayerRef.current.src = ''; // Release current audio object
+      }
+
+      const ttsInput: SpeakTextInput = { text: lastAiMessage.text };
+      const result = await speakText(ttsInput);
+      
+      if (result.audioContent) {
+        const audioSrc = `data:audio/mp3;base64,${result.audioContent}`;
+        const audio = new Audio(audioSrc);
+        audioPlayerRef.current = audio; // Store reference
+        audio.play();
+        audio.onended = () => setIsSpeakingLoading(false); // Reset loading when done
+        audio.onerror = (e) => {
+          console.error("Error playing audio:", e);
+          showToast("خطأ في تشغيل الصوت", "لم نتمكن من تشغيل الرد الصوتي.", "destructive");
+          setIsSpeakingLoading(false);
+        }
+      } else {
+        throw new Error("لم يتم إرجاع محتوى صوتي.");
+      }
+    } catch (error: any) {
+      console.error("Error in Text-to-Speech:", error);
+      showToast("خطأ في تحويل النص إلى كلام", error.message, "destructive");
+      setIsSpeakingLoading(false);
+    }
+    // Note: setIsSpeakingLoading(false) is primarily handled by audio events (onended, onerror)
+    // to ensure it only resets after playback attempt.
+  };
+
 
   return (
     <div className="w-full max-w-3xl mx-auto">
@@ -475,6 +518,20 @@ export default function AIPoweredDoctorAssistantPage() {
               ))
             )}
           </ScrollArea>
+          
+          <div className="mt-3 mb-6 flex justify-end">
+            <Button 
+              onClick={handleSpeakLastResponse} 
+              className="control-btn control-btn-indigo" 
+              variant="default" 
+              size="sm" 
+              disabled={isSpeakingLoading || isLoading || chatHistory.filter(m=>m.role==='model' && !m.isStreaming && m.text.trim() !== "").length === 0}
+            >
+              {isSpeakingLoading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Volume2 className="mr-2 h-5 w-5" />}
+              {isSpeakingLoading ? 'جاري التجهيز...' : 'استمع لآخر رد'}
+            </Button>
+          </div>
+
 
           <div className="mb-6">
             <Label htmlFor="healthInput" className="block text-foreground text-lg md:text-xl font-semibold mb-3">
