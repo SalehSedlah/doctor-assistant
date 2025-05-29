@@ -24,37 +24,44 @@ export type StreamedChatInput = z.infer<typeof StreamedChatInputSchema>;
 
 // This server action will return an AsyncIterable for the client to consume.
 export async function* streamedChat(input: StreamedChatInput): AsyncGenerator<string, void, undefined> {
-  const promptParts: Part[] = [];
-  const currentInput = input as StreamedChatInput; // Minor explicit type assertion
+  const { prompt: textPrompt, photoDataUri } = input;
+  const parts: Part[] = [];
 
-  if (currentInput.prompt) {
-    promptParts.push({ text: currentInput.prompt });
-  } else if (currentInput.photoDataUri) {
-    // If only an image is provided, add a default text prompt.
-    promptParts.push({ text: "ماذا ترى في هذه الصورة؟ صفها بالتفصيل." });
+  // Add text part if provided
+  if (textPrompt) {
+    parts.push({ text: textPrompt });
   }
 
-  if (currentInput.photoDataUri) {
-    // The Gemini API expects multi-part prompts (text & image) to have the image data after the text.
-    promptParts.push({ media: { url: currentInput.photoDataUri } });
+  // Add image part if provided
+  if (photoDataUri) {
+    // If there was no text prompt but there is an image, add a default text part for the image.
+    // Gemini generally expects text before an image if both are present in a multi-part prompt.
+    if (parts.length === 0) {
+        parts.push({ text: "ماذا ترى في هذه الصورة؟ صفها بالتفصيل." });
+    }
+    parts.push({ media: { url: photoDataUri } });
   }
   
-  if (promptParts.length === 0) {
+  // If after all checks, parts is still empty, it means neither prompt nor image was provided.
+  if (parts.length === 0) {
     yield "الرجاء إدخال رسالة أو إرفاق صورة.";
     return;
   }
 
-  const finalPrompt = promptParts.length === 1 && promptParts[0].text && !promptParts[0].media
-    ? promptParts[0].text
-    : promptParts;
+  // Determine the final prompt structure for Genkit
+  // If it's just a single text part, send the string directly. Otherwise, send the array of parts.
+  const finalPromptForGenkit = parts.length === 1 && parts[0].text && !parts[0].media
+    ? parts[0].text
+    : parts;
 
-  if (!finalPrompt || (Array.isArray(finalPrompt) && finalPrompt.length === 0)) {
+  // Double check finalPromptForGenkit is not empty or an empty array (should be caught by parts.length === 0)
+  if (!finalPromptForGenkit || (Array.isArray(finalPromptForGenkit) && finalPromptForGenkit.length === 0)) {
     yield "الرجاء تقديم مدخل صالح.";
     return;
   }
   
   const { stream, response: fullResponsePromise } = ai.generateStream({
-    prompt: finalPrompt,
+    prompt: finalPromptForGenkit,
     // model: 'gemini-1.5-flash-latest', // Default is gemini-2.0-flash from genkit.ts
     // config: { temperature: 0.7 } // Optional config
   });
@@ -72,4 +79,3 @@ export async function* streamedChat(input: StreamedChatInput): AsyncGenerator<st
     yield `عذرًا، حدث خطأ أثناء إنشاء الرد: ${errorMessage}`;
   }
 }
-
