@@ -25,30 +25,25 @@ export type StreamedChatInput = z.infer<typeof StreamedChatInputSchema>;
 // This server action will return an AsyncIterable for the client to consume.
 export async function* streamedChat(input: StreamedChatInput): AsyncGenerator<string, void, undefined> {
   const promptParts: Part[] = [];
+  const currentInput = input as StreamedChatInput; // Minor explicit type assertion
 
-  if (input.prompt) {
-    promptParts.push({ text: input.prompt });
-  } else if (input.photoDataUri) {
+  if (currentInput.prompt) {
+    promptParts.push({ text: currentInput.prompt });
+  } else if (currentInput.photoDataUri) {
     // If only an image is provided, add a default text prompt.
     promptParts.push({ text: "ماذا ترى في هذه الصورة؟ صفها بالتفصيل." });
   }
 
-  if (input.photoDataUri) {
+  if (currentInput.photoDataUri) {
     // The Gemini API expects multi-part prompts (text & image) to have the image data after the text.
-    // If prompt was empty and only image was provided, the default text part is already added.
-    // If prompt was provided, it's already added. Now add the image.
-    promptParts.push({ media: { url: input.photoDataUri } });
+    promptParts.push({ media: { url: currentInput.photoDataUri } });
   }
   
-  // If after all, promptParts is empty (e.g., empty input string and no image), yield an error message.
   if (promptParts.length === 0) {
     yield "الرجاء إدخال رسالة أو إرفاق صورة.";
     return;
   }
 
-  // Ensure there's at least one text part if sending multiple parts,
-  // and that it's usually first. The logic above should handle this.
-  // If only one part and it's text, send as string. Otherwise, as Part[].
   const finalPrompt = promptParts.length === 1 && promptParts[0].text && !promptParts[0].media
     ? promptParts[0].text
     : promptParts;
@@ -66,15 +61,15 @@ export async function* streamedChat(input: StreamedChatInput): AsyncGenerator<st
 
   try {
     for await (const chunk of stream) {
-      if (chunk.text) { // Ensure text exists in the chunk
+      if (chunk.text) { 
         yield chunk.text;
       }
     }
-    await fullResponsePromise; // Wait for the full response to settle
+    await fullResponsePromise; 
   } catch (error) {
     console.error("Error during AI stream generation:", error);
-    // Try to yield a more specific error if possible
     const errorMessage = error instanceof Error ? error.message : "An error occurred";
     yield `عذرًا، حدث خطأ أثناء إنشاء الرد: ${errorMessage}`;
   }
 }
+
