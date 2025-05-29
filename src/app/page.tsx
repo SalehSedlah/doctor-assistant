@@ -133,7 +133,7 @@ export default function AIPoweredDoctorAssistantPage() {
       id: clientMessageId,
       role,
       text,
-      imageUrl: imageUrlForDisplay === undefined ? null : imageUrlForDisplay,
+      imageUrl: imageUrlForDisplay === undefined ? null : (imageUrlForDisplay || null),
       timestamp: Timestamp.now(),
       isStreaming,
     };
@@ -141,11 +141,14 @@ export default function AIPoweredDoctorAssistantPage() {
 
     const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string; } }> = [];
     if (text) parts.push({ text });
-    if (role === 'user' && base64Image) {
-      const mimeType = imageUploadRef.current?.files?.[0]?.type || 'image/png';
+    
+    // Use base64Image for API if this is a user message being sent
+    if (role === 'user' && base64Image && imageUrlForDisplay) {
+      const mimeType = imageUploadRef.current?.files?.[0]?.type || (base64Image.startsWith('data:image/png') ? 'image/png' : (base64Image.startsWith('data:image/jpeg') ? 'image/jpeg' : 'image/png'));
       const b64Data = base64Image.split(',')[1];
       if (b64Data) parts.push({ inlineData: { mimeType, data: b64Data } });
     }
+
 
     if (parts.length > 0) {
       const newMessageForAPI: LocalChatMessageForAPI = {
@@ -157,7 +160,6 @@ export default function AIPoweredDoctorAssistantPage() {
     }
     
     if (role === 'user' && !isStreaming) {
-      // Save user message immediately (non-streaming)
       saveChatMessage({ role, text, imageUrl: newMessageForUI.imageUrl, timestamp: newMessageForUI.timestamp });
     }
     return clientMessageId;
@@ -218,7 +220,7 @@ export default function AIPoweredDoctorAssistantPage() {
         context.setTransform(1, 0, 0, 1, 0, 0);
       }
       const imageDataUrl = canvas.toDataURL('image/png');
-      setBase64Image(imageDataUrl);
+      setBase64Image(imageDataUrl); // This is the full data URI
       setImagePreview(imageDataUrl);
       displayMessage("تم التقاط الصورة بنجاح!", "info");
       return imageDataUrl;
@@ -229,20 +231,20 @@ export default function AIPoweredDoctorAssistantPage() {
 
   const handleSendMessage = useCallback(async (sttInput?: string) => {
     const userInput = (typeof sttInput === 'string' ? sttInput : healthInput).trim();
-    let currentImageToSendWithUserMessage = base64Image;
+    let currentImageToSendWithUserMessage = base64Image; // This holds the full data URI
 
-    const apiKey = ""; // IMPORTANT: User needs to provide their API key here.
+    const apiKey = "AIzaSyAWTysN_zMdRn-MVt6mv9XxbcG0vAt7ujc"; 
     
     if (!apiKey) {
-      displayMessage("خطأ: مفتاح Gemini API غير موجود. يرجى إضافته في الكود (page.tsx) للمتابعة.", "error");
-      setIsLoading(false); // Reset loading state if we return early
+      displayMessage("خطأ: مفتاح Gemini API غير موجود أو فارغ. يرجى إضافته في الكود (page.tsx) للمتابعة.", "error");
+      setIsLoading(false); 
       return;
     }
 
     if (cameraStream && !currentImageToSendWithUserMessage) {
       const capturedImg = captureImageFromCamera();
       if (capturedImg) {
-        currentImageToSendWithUserMessage = capturedImg;
+        currentImageToSendWithUserMessage = capturedImg; // capturedImg is also full data URI
         await new Promise(resolve => setTimeout(resolve, 100)); 
       }
     }
@@ -255,7 +257,7 @@ export default function AIPoweredDoctorAssistantPage() {
     setIsLoading(true);
     if (cameraStream) stopCameraInternal();
 
-    addOptimisticMessageToChat("user", userInput, imagePreview);
+    addOptimisticMessageToChat("user", userInput, imagePreview); // imagePreview is the data URI for display
     
     const systemPrompt = `
 أنت مساعد طبي افتراضي ذكي ومحادث. مهمتك هي التفاعل مع المستخدمين وتقديم معلومات عامة **مفصلة ودقيقة قدر الإمكان** بناءً على وصفهم (نص أو صوت) وأي صور يشاركونها (مثل فحوصات أو ملاحظات مرئية).
@@ -298,12 +300,14 @@ ${userInput}
     });
 
     const currentUserParts: Array<{ text?: string; inlineData?: { mimeType: string; data: string; } }> = [];
-    if (userInput) currentUserParts.push({ text: systemPrompt });
+    if (userInput) currentUserParts.push({ text: systemPrompt }); // System prompt is prepended to user's text
     else if (currentImageToSendWithUserMessage) currentUserParts.push({ text: "صف هذه الصورة من فضلك. " + systemPrompt });
 
 
     if (currentImageToSendWithUserMessage) {
-      const mimeType = imageUploadRef.current?.files?.[0]?.type || (currentImageToSendWithUserMessage.startsWith('data:image/png') ? 'image/png' : (currentImageToSendWithUserMessage.startsWith('data:image/jpeg') ? 'image/jpeg' : 'image/png'));
+       // currentImageToSendWithUserMessage is already the full data URI
+      const mimeTypeMatch = currentImageToSendWithUserMessage.match(/^data:(image\/[a-zA-Z+]+);base64,/);
+      const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : 'image/png';
       const b64Data = currentImageToSendWithUserMessage.split(',')[1];
       if (b64Data) currentUserParts.push({ inlineData: { mimeType, data: b64Data } });
     }
@@ -334,10 +338,9 @@ ${userInput}
         let errorBodyContent = `Status: ${response.status} ${response.statusText}`;
         try {
           const errorBodyJson = await response.json();
-          console.error("API Error JSON Response:", errorBodyJson); // Log the actual JSON
-          // Check if errorBodyJson is an empty object
+          console.error("API Error JSON Response:", errorBodyJson); 
           if (Object.keys(errorBodyJson).length === 0 && errorBodyJson.constructor === Object) {
-            errorBodyContent = `API request failed with status ${response.status}. The server returned an empty error response. Please check your API key and network.`;
+            errorBodyContent = `API request failed with status ${response.status}. The server returned an empty error response. Please check your API key, network, and that the Gemini API is enabled for your project.`;
           } else {
             errorBodyContent = errorBodyJson?.error?.message || JSON.stringify(errorBodyJson) || `Status: ${response.status}`;
           }
@@ -361,17 +364,17 @@ ${userInput}
         result.candidates[0].content.parts.length > 0) {
         const aiTextResponse = result.candidates[0].content.parts[0].text || "لم يتمكن المساعد من إنشاء رد نصي.";
         
-        // Update the streaming message with the final content
         setChatHistory(prev => prev.map(msg => 
             msg.id === aiMessageClientId ? { ...msg, text: aiTextResponse, isStreaming: false } : msg
         ));
-        // Save the finalized AI message
-        const finalAIMessage = chatHistory.find(msg => msg.id === aiMessageClientId);
-        if (finalAIMessage) {
-             saveChatMessage({ role: "model", text: aiTextResponse, imageUrl: null, timestamp: finalAIMessage.timestamp });
-        } else { // Fallback if not found, though unlikely
+        
+        const finalAIMsgFromHistory = chatHistory.find(msg => msg.id === aiMessageClientId);
+        if (finalAIMsgFromHistory) { // Should always be true now
+             saveChatMessage({ role: "model", text: aiTextResponse, imageUrl: null, timestamp: finalAIMsgFromHistory.timestamp });
+        } else { 
              saveChatMessage({ role: "model", text: aiTextResponse, imageUrl: null, timestamp: Timestamp.now() });
         }
+
         displayMessage('تمت الاستشارة بنجاح!', 'info');
       } else {
         console.error("Unexpected API response structure:", result);
@@ -449,10 +452,12 @@ ${userInput}
           const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string; } }> = [];
           if (data.text) parts.push({ text: data.text });
           if (data.imageUrl) {
+            // Assuming imageUrl is stored as a data URI
+            const mimeTypeMatch = data.imageUrl.match(/^data:(image\/[a-zA-Z+]+);base64,/);
+            const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : 'image/png';
             const b64Data = data.imageUrl.split(',')[1];
             if (b64Data) {
-              const mimeType = data.imageUrl.substring(data.imageUrl.indexOf(':') + 1, data.imageUrl.indexOf(';'));
-              parts.push({ inlineData: { mimeType: mimeType || 'image/png', data: b64Data } });
+              parts.push({ inlineData: { mimeType, data: b64Data } });
             }
           }
           if (parts.length > 0) {
@@ -462,7 +467,7 @@ ${userInput}
         setChatHistory(newHistoryFromDB);
         setLocalChatHistoryForAPI(newLocalHistoryForAPI);
 
-        if (!snapshot.metadata.hasPendingWrites) { // Only show message once initial load is complete
+        if (!snapshot.metadata.hasPendingWrites) { 
             if (snapshot.empty) {
                 displayMessage('تم تحميل سجل المحادثات وهو فارغ حاليًا.', 'info');
             } else {
@@ -534,7 +539,7 @@ ${userInput}
         speechRecognitionRef.current.stop();
       }
     };
-  }, [displayMessage, isListening, handleSendMessage]); // Added handleSendMessage, though it's not directly called here, it's part of the flow STT used to trigger implicitly.
+  }, [displayMessage, isListening]); 
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -543,7 +548,7 @@ ${userInput}
       reader.onload = (e) => {
         const dataUrl = e.target?.result as string;
         setImagePreview(dataUrl);
-        setBase64Image(dataUrl);
+        setBase64Image(dataUrl); // Store the full data URI
         displayMessage("تم اختيار الصورة.", "info");
       };
       reader.onerror = (error) => {
@@ -639,7 +644,7 @@ ${userInput}
               <p className="text-gray-400 text-center py-10">ابدأ محادثتك مع المساعد الطبي...</p>
             ) : (
               chatHistory.map((msg) => (
-                <div key={msg.id} className={`chat-message ${msg.role}`}>
+                <div key={msg.id} className={`chat-message ${msg.role === 'user' ? 'user' : 'ai'}`}>
                   <div className="flex items-start gap-2.5">
                     {msg.role === 'user' ?
                       <UserCircle className="h-6 w-6 text-gray-400 shrink-0" /> :
@@ -694,7 +699,7 @@ ${userInput}
             <div className="mt-3 flex gap-2">
               <Button onClick={toggleListening} id="microphoneBtn" className={`control-btn ${isListening ? 'control-btn-red' : 'control-btn-green'}`} variant="default" size="default" disabled={!speechRecognitionRef.current || isLoading}>
                 {isListening ? <MicOff className="mr-2 h-5 w-5" /> : <Mic className="mr-2 h-5 w-5" />}
-                {isListening ? 'إيقاف الاستماع' : 'تحدث'}
+                {isListening ? 'إيقاف الاستماع' : 'التقاط الصوت'}
               </Button>
             </div>
           </div>
