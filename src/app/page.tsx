@@ -44,14 +44,9 @@ import {
   Loader2, // Shadcn loader
   Upload, // For file upload
   Image as ImageIconLucide, // For image icon next to label
-  Volume2, // For play TTS
-  VolumeX, // For stop TTS
   TriangleAlert,
   Send, // For send button
-  Paperclip, // Generic attach icon if needed
 } from "lucide-react";
-
-import { speakText } from "@/ai/flows/speak-text-flow"; // Re-adding for TTS
 
 // Firebase configuration
 const firebaseConfig = {
@@ -68,7 +63,7 @@ interface ChatMessage {
   id?: string; 
   role: "user" | "model"; // "model" for AI as per Gemini API
   text: string;
-  imageUrl?: string | null; // Store full Data URL for display, extract base64 for API
+  imageUrl?: string | null; 
   timestamp: Timestamp;
 }
 
@@ -111,15 +106,11 @@ export default function AIPoweredDoctorAssistantPage() {
   const messageBoxRef = useRef<HTMLDivElement>(null);
   const messageTextRef = useRef<HTMLParagraphElement>(null);
   
-  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
-  const [isSpeakingTTS, setIsSpeakingTTS] = useState(false);
-  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
-
 
   const displayMessage = useCallback((message: string, type: 'info' | 'error' | 'warning' = 'info') => {
     if (messageBoxRef.current && messageTextRef.current) {
       messageTextRef.current.textContent = message;
-      messageBoxRef.current.className = `message-box-global ${type}`; // Reset classes and add new type
+      messageBoxRef.current.className = `message-box-global ${type}`; 
       messageBoxRef.current.classList.remove('hidden');
       
       setTimeout(() => {
@@ -130,15 +121,14 @@ export default function AIPoweredDoctorAssistantPage() {
     }
   }, []);
 
-  const saveChatMessage = useCallback(async (message: Omit<ChatMessage, "id">) => {
+  const saveChatMessage = useCallback(async (message: ChatMessage) => {
     if (dbRef.current && currentUserId && appId) {
       try {
-        // Ensure imageUrl is null if undefined before saving
-        const docToSave = {
-          ...message,
-          imageUrl: message.imageUrl === undefined ? null : message.imageUrl,
-        };
-        await addDoc(collection(dbRef.current, `artifacts/${appId}/users/${currentUserId}/medical_chat_history`), docToSave);
+        const { id, ...messageToSave } = message; // Exclude client-side id
+        await addDoc(collection(dbRef.current, `artifacts/${appId}/users/${currentUserId}/medical_chat_history`), {
+          ...messageToSave,
+          imageUrl: messageToSave.imageUrl === undefined ? null : messageToSave.imageUrl,
+        });
       } catch (error: any) {
         console.error("Error saving chat message:", error);
         displayMessage(`فشل حفظ الرسالة: ${error.message}`, "error");
@@ -146,38 +136,35 @@ export default function AIPoweredDoctorAssistantPage() {
     }
   }, [currentUserId, appId, displayMessage]);
   
-  const addMessageToChatUIAndLocalHistory = useCallback((role: "user" | "model", text: string, imageUrlForDisplay?: string | null) => {
+  const addMessageToChatUIAndLocalHistory = useCallback((role: "user" | "model", text: string, imageUrlForDisplay?: string | null, clientMessageId?: string) => {
     const newMessageForUI: ChatMessage = {
+      id: clientMessageId || `${Date.now()}-${Math.random()}`, // Ensure a unique ID for UI key
       role,
       text,
-      imageUrl: imageUrlForDisplay,
+      imageUrl: imageUrlForDisplay === undefined ? null : imageUrlForDisplay,
       timestamp: Timestamp.now(),
     };
     setChatHistory(prev => [...prev, newMessageForUI]);
 
-    // Prepare message for local API history (Gemini format)
     const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string; } }> = [];
     if (text) parts.push({ text });
-    if (role === 'user' && base64Image) { // Only add image for user message if it's current
+    if (role === 'user' && base64Image) { 
         const mimeType = imageUploadRef.current?.files?.[0]?.type || 'image/png';
-        const b64Data = base64Image.split(',')[1]; // Extract Base64 data
+        const b64Data = base64Image.split(',')[1]; 
         if(b64Data) parts.push({ inlineData: { mimeType, data: b64Data } });
-    } else if (role === 'model' && imageUrlForDisplay) { // If AI message has image URL (not typical for Gemini text model but for future)
-        // This part might need adjustment if Gemini response can include images to display
-        // For now, assuming AI text responses don't have images to send back in history
     }
     
     const newMessageForAPI: LocalChatMessageForAPI = {
         role,
         parts,
-        timestamp: new Date().toISOString() // Store ISO string for local API history context if needed
+        timestamp: new Date().toISOString()
     };
     setLocalChatHistoryForAPI(prev => [...prev, newMessageForAPI]);
 
     if (role === 'user') {
       saveChatMessage(newMessageForUI);
     }
-    // For AI messages, saving is handled after receiving the full response
+    return newMessageForUI.id;
   }, [saveChatMessage, base64Image]);
 
 
@@ -192,7 +179,7 @@ export default function AIPoweredDoctorAssistantPage() {
 
   const captureImageFromCamera = useCallback(() => {
     if (!cameraStream || !cameraFeedRef.current || !cameraCanvasRef.current) {
-      displayMessage("الكاميرا غير نشطة", "يرجى تشغيل الكاميرا أولاً.", "error");
+      displayMessage("الكاميرا غير نشطة. يرجى تشغيل الكاميرا أولاً.", "error");
       return null; 
     }
     const video = cameraFeedRef.current;
@@ -201,15 +188,15 @@ export default function AIPoweredDoctorAssistantPage() {
     canvas.height = video.videoHeight;
     const context = canvas.getContext('2d');
     if (context) {
-      if (currentFacingMode === 'user') { // Mirror if front camera
+      if (currentFacingMode === 'user') { 
         context.translate(canvas.width, 0);
         context.scale(-1, 1);
       }
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      if (currentFacingMode === 'user') { // Reset transform
+      if (currentFacingMode === 'user') { 
         context.setTransform(1, 0, 0, 1, 0, 0);
       }
-      const imageDataUrl = canvas.toDataURL('image/png'); // Full Data URL
+      const imageDataUrl = canvas.toDataURL('image/png'); 
       setBase64Image(imageDataUrl); 
       setImagePreview(imageDataUrl); 
       displayMessage("تم التقاط الصورة بنجاح!", "info");
@@ -218,17 +205,14 @@ export default function AIPoweredDoctorAssistantPage() {
     return null;
   }, [cameraStream, currentFacingMode, displayMessage]);
 
-
   const handleSendMessage = useCallback(async (sttInput?: string) => {
     const userInput = (typeof sttInput === 'string' ? sttInput : healthInput).trim();
-    let currentImageToSendWithUserMessage = base64Image; // This is the full Data URL
+    let currentImageToSendWithUserMessage = base64Image;
 
-    // If camera is active and no image selected/captured yet, capture one now
     if (cameraStream && !currentImageToSendWithUserMessage) { 
       const capturedImg = captureImageFromCamera(); 
       if (capturedImg) {
         currentImageToSendWithUserMessage = capturedImg;
-        // Wait a tiny bit for state to update if needed, though captureImageFromCamera sets it
         await new Promise(resolve => setTimeout(resolve, 100));
       }
     }
@@ -239,15 +223,10 @@ export default function AIPoweredDoctorAssistantPage() {
     }
 
     setIsLoading(true);
-    if (speechSynthesis.speaking) speechSynthesis.cancel();
-    if (cameraStream) stopCameraInternal(); // Stop camera if sending message
+    if (cameraStream) stopCameraInternal(); 
 
-    // Add user message to UI and local history for API context
-    // The image for display is imagePreview (which should be same as currentImageToSendWithUserMessage if captured/selected)
     addMessageToChatUIAndLocalHistory("user", userInput, imagePreview);
     
-    // Prepare payload for Gemini API
-    // System prompt from user's HTML
     const systemPrompt = `
 أنت مساعد طبي افتراضي ذكي ومحادث. مهمتك هي التفاعل مع المستخدمين وتقديم معلومات عامة **مفصلة ودقيقة قدر الإمكان** بناءً على وصفهم (نص أو صوت) وأي صور يشاركونها (مثل فحوصات أو ملاحظات مرئية).
 **تذكر: لا تقدم تشخيصًا، لا تصف أدوية، ولا تقدم نصيحة طبية مباشرة أو شخصية.**
@@ -280,23 +259,16 @@ export default function AIPoweredDoctorAssistantPage() {
 الرسالة الحالية من المستخدم:
 ${userInput}
 `;
-    // Construct Gemini API payload from localChatHistoryForAPI
-    const contentsForAPI: any[] = [
-        // Start with the system prompt. Gemini prefers system instructions in the first user turn or specific system role if API supports it.
-        // For direct generateContent, often included in first user message or as overall context.
-        // To match user's HTML, system prompt is mixed with current user input.
-    ];
+    const contentsForAPI: any[] = [];
     
-    // Add previous messages from local API history (already in Gemini parts format)
     localChatHistoryForAPI.forEach(msg => {
-        if (msg.role !== "user" || !msg.text?.includes("الرسالة الحالية من المستخدم:")) { // Avoid duplicating system prompt wrapper
+        if (msg.role !== "user" || !msg.parts.some(p => p.text?.includes("الرسالة الحالية من المستخدم:"))) {
              contentsForAPI.push({ role: msg.role, parts: msg.parts });
         }
     });
 
-    // Current user input parts
     const currentUserParts: Array<{ text?: string; inlineData?: { mimeType: string; data: string; } }> = [];
-    if (userInput) currentUserParts.push({ text: systemPrompt }); // User's HTML embedds system prompt with current user input
+    if (userInput) currentUserParts.push({ text: systemPrompt }); 
     else if (currentImageToSendWithUserMessage) currentUserParts.push({text: "صف هذه الصورة من فضلك. " + systemPrompt});
 
 
@@ -312,10 +284,8 @@ ${userInput}
     
     const payload = { contents: contentsForAPI };
     const apiKey = ""; // IMPORTANT: User needs to provide their API key here.
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`; // Updated model
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
     
-    // Clear input fields after preparing payload for API
-    const currentHealthInput = healthInput; // Save before clearing
     setHealthInput(""); 
     setBase64Image(null); 
     setImagePreview(null); 
@@ -341,26 +311,25 @@ ${userInput}
           result.candidates[0].content.parts.length > 0) {
         const aiTextResponse = result.candidates[0].content.parts[0].text || "لم يتمكن المساعد من إنشاء رد نصي.";
         
-        addMessageToChatUIAndLocalHistory("model", aiTextResponse, null); // Add AI response to UI
-        saveChatMessage({ role: "model", text: aiTextResponse, imageUrl: null, timestamp: Timestamp.now() }); // Save AI response to Firestore
+        const aiMessage = addMessageToChatUIAndLocalHistory("model", aiTextResponse, null); 
+        saveChatMessage({ role: "model", text: aiTextResponse, imageUrl: null, timestamp: Timestamp.now(), id: aiMessage });
 
         displayMessage('تمت الاستشارة بنجاح!', 'info');
       } else {
         console.error("Unexpected API response structure:", result);
-        consterrMsg = 'حدث خطأ في معالجة طلبك أو كانت الاستجابة فارغة.';
-        addMessageToChatUIAndLocalHistory("model", errMsg, null);
-        saveChatMessage({role: "model", text: errMsg, imageUrl:null, timestamp: Timestamp.now()});
+        const errMsg = 'حدث خطأ في معالجة طلبك أو كانت الاستجابة فارغة.';
+        const aiMessage = addMessageToChatUIAndLocalHistory("model", errMsg, null);
+        saveChatMessage({role: "model", text: errMsg, imageUrl:null, timestamp: Timestamp.now(), id: aiMessage});
         displayMessage(errMsg, 'error');
       }
     } catch (error: any) {
       console.error("Error calling Gemini API:", error);
       const errMsg = `خطأ في الاتصال بالذكاء الاصطناعي: ${error.message}`;
-      addMessageToChatUIAndLocalHistory("model", errMsg, null);
-      saveChatMessage({role: "model", text: errMsg, imageUrl:null, timestamp: Timestamp.now()});
+      const aiMessage = addMessageToChatUIAndLocalHistory("model", errMsg, null);
+      saveChatMessage({role: "model", text: errMsg, imageUrl:null, timestamp: Timestamp.now(), id: aiMessage});
       displayMessage(errMsg, 'error');
     } finally {
       setIsLoading(false);
-      // HealthInput, base64Image, etc., are already cleared before API call
     }
   }, [
     healthInput, base64Image, imagePreview, cameraStream, currentFacingMode,
@@ -368,7 +337,6 @@ ${userInput}
     captureImageFromCamera, stopCameraInternal, localChatHistoryForAPI
   ]);
 
-  // Initialize Firebase
   useEffect(() => {
     if (!appRef.current) {
       try {
@@ -395,7 +363,6 @@ ${userInput}
     }
   }, [displayMessage]);
 
-  // Load chat history from Firestore
    useEffect(() => {
     if (dbRef.current && currentUserId && appId) {
       const chatCollectionRef = collection(dbRef.current, `artifacts/${appId}/users/${currentUserId}/medical_chat_history`);
@@ -407,19 +374,18 @@ ${userInput}
 
         snapshot.forEach(doc => {
           const data = doc.data();
-          const messageForUI = { 
+          const messageForUI: ChatMessage = { 
             id: doc.id, 
             role: data.role,
             text: data.text,
             imageUrl: data.imageUrl === undefined ? null : data.imageUrl, 
-            timestamp: data.timestamp instanceof Timestamp ? data.timestamp : Timestamp.fromDate(new Date(data.timestamp.seconds * 1000)) 
-          } as ChatMessage;
+            timestamp: data.timestamp 
+          };
           newHistoryFromDB.push(messageForUI);
 
           const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string; } }> = [];
           if (data.text) parts.push({ text: data.text });
           if (data.imageUrl) {
-            // Assuming imageUrl is a data URI. Extract base64 part for API.
             const b64Data = data.imageUrl.split(',')[1];
             if (b64Data) {
                  const mimeType = data.imageUrl.substring(data.imageUrl.indexOf(':') + 1, data.imageUrl.indexOf(';'));
@@ -431,7 +397,7 @@ ${userInput}
            }
         });
         setChatHistory(newHistoryFromDB);
-        setLocalChatHistoryForAPI(newLocalHistoryForAPI); // Populate local history for API context
+        setLocalChatHistoryForAPI(newLocalHistoryForAPI);
 
         if (snapshot.empty) {
              displayMessage('تم تحميل سجل المحادثات وهو فارغ حاليًا.', 'info');
@@ -447,7 +413,6 @@ ${userInput}
     }
   }, [currentUserId, appId, displayMessage]);
 
-  // Scroll chat history to bottom
    useEffect(() => {
     if (chatHistoryContainerRef.current) {
       chatHistoryContainerRef.current.scrollTop = chatHistoryContainerRef.current.scrollHeight;
@@ -458,56 +423,54 @@ ${userInput}
   useEffect(() => {
     if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
       const SpeechRecognitionAPI = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      recognition = new SpeechRecognitionAPI(); // Assign to the higher-scoped variable
-      recognition.continuous = true; 
-      recognition.interimResults = true; 
-      recognition.lang = 'ar-SA';
-
-      recognition.onstart = () => {
-        setIsListening(true);
-        displayMessage('الاستماع المستمر... تحدث الآن.', 'info');
-        setHealthInput(''); 
-      };
+      speechRecognitionRef.current = new SpeechRecognitionAPI();
       
-      recognition.onresult = (event: any) => {
-        let currentTranscript = '';
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-            currentTranscript += event.results[i][0].transcript;
-        }
-        setHealthInput(currentTranscript);
-      };
+      if (speechRecognitionRef.current) {
+        const currentRecognition = speechRecognitionRef.current;
+        currentRecognition.continuous = true; 
+        currentRecognition.interimResults = true; 
+        currentRecognition.lang = 'ar-SA';
 
-      recognition.onend = () => {
-        setIsListening(false);
-        displayMessage('توقف الاستماع المستمر.', 'info');
-        // Automatically send the message, as per user's HTML logic
-        // Need to pass the final transcript directly to handleSendMessage
-        // as healthInput state update might not be immediate.
-        if (healthInput.trim()) { // Check if healthInput has content from STT
-             handleSendMessage(healthInput); // Pass current healthInput
-        }
-      };
+        currentRecognition.onstart = () => {
+          setIsListening(true);
+          displayMessage('الاستماع المستمر... تحدث الآن.', 'info');
+          setHealthInput(''); 
+        };
+        
+        currentRecognition.onresult = (event: any) => {
+          let currentTranscript = '';
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+              currentTranscript += event.results[i][0].transcript;
+          }
+          setHealthInput(currentTranscript);
+        };
 
-      recognition.onerror = (event: any) => {
-        console.error('Speech recognition error:', event.error);
-        if (event.error !== 'no-speech' && event.error !== 'aborted') { 
-             displayMessage(`خطأ في التعرف على الكلام: ${event.error}`, "error");
-        } else if (event.error === 'no-speech') {
-            displayMessage('لم يتم اكتشاف أي كلام.', 'warning');
-        }
-        setIsListening(false);
-      };
-      speechRecognitionRef.current = recognition; // Store instance
+        currentRecognition.onend = () => {
+          setIsListening(false);
+          displayMessage('توقف الاستماع.', 'info');
+          // Do not automatically send, user will click send button
+        };
+
+        currentRecognition.onerror = (event: any) => {
+          console.error('Speech recognition error:', event.error);
+          if (event.error !== 'no-speech' && event.error !== 'aborted') { 
+               displayMessage(`خطأ في التعرف على الكلام: ${event.error}`, "error");
+          } else if (event.error === 'no-speech') {
+              displayMessage('لم يتم اكتشاف أي كلام.', 'warning');
+          }
+          setIsListening(false);
+        };
+      }
     } else {
         displayMessage('متصفحك لا يدعم ميزة التعرف على الكلام.', 'warning');
     }
     
-    return () => { // Cleanup
+    return () => {
       if (speechRecognitionRef.current && isListening) {
         speechRecognitionRef.current.stop();
       }
     };
-  }, [displayMessage, handleSendMessage, isListening, healthInput]); // healthInput added to use its latest value in onend
+  }, [displayMessage, isListening, healthInput]);
 
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -515,9 +478,9 @@ ${userInput}
     if (file) {
       const reader = new FileReader();
       reader.onload = (e) => {
-        const dataUrl = e.target?.result as string; // Full Data URL
+        const dataUrl = e.target?.result as string; 
         setImagePreview(dataUrl);
-        setBase64Image(dataUrl); // Store full Data URL
+        setBase64Image(dataUrl); 
         displayMessage("تم اختيار الصورة.", "info");
       };
       reader.onerror = (error) => {
@@ -542,7 +505,6 @@ ${userInput}
         setHealthInput(""); 
         speechRecognitionRef.current.start();
       } catch (e: any) {
-        // Error handling for STT start
         displayMessage(`خطأ في بدء الميكروفون: ${e.message}`, "error");
         setIsListening(false); 
       }
@@ -555,7 +517,6 @@ ${userInput}
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode } });
       if (cameraFeedRef.current) {
         cameraFeedRef.current.srcObject = stream;
-        // Mirror front camera for natural view
         cameraFeedRef.current.style.transform = (facingMode === 'user') ? 'scaleX(-1)' : 'scaleX(1)';
       }
       setCameraStream(stream);
@@ -577,75 +538,12 @@ ${userInput}
     startCamera(newFacingMode); 
   };
 
-  const playLastAIResponse = async () => {
-    if (isSpeakingTTS) {
-        if (audioPlayerRef.current) {
-            audioPlayerRef.current.pause();
-            audioPlayerRef.current.currentTime = 0;
-        }
-        setIsSpeakingTTS(false);
-        return;
-    }
-
-    const lastAiMessage = chatHistory.filter(msg => msg.role === 'model').pop();
-    if (!lastAiMessage || !lastAiMessage.text) {
-      displayMessage('لا يوجد رد من المساعد لتشغيله.', 'warning');
-      return;
-    }
-
-    setIsLoading(true); // Use general loading or a specific TTS loading state
-    try {
-      const { audioContent } = await speakText({ text: lastAiMessage.text });
-      if (audioContent) {
-        const audioSrc = `data:audio/mp3;base64,${audioContent}`;
-        if (audioPlayerRef.current) {
-            audioPlayerRef.current.src = audioSrc;
-            audioPlayerRef.current.play()
-                .then(() => setIsSpeakingTTS(true))
-                .catch(e => {
-                    console.error("Error playing audio:", e);
-                    displayMessage("فشل تشغيل الصوت.", "error");
-                    setIsSpeakingTTS(false);
-                });
-        }
-      } else {
-        displayMessage("لم يتمكن من إنشاء الصوت.", "error");
-      }
-    } catch (error: any) {
-      console.error("Error in text-to-speech:", error);
-      displayMessage(`خطأ في تحويل النص إلى كلام: ${error.message}`, "error");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const stopSpeakingTTS = () => {
-    if (audioPlayerRef.current) {
-        audioPlayerRef.current.pause();
-        audioPlayerRef.current.currentTime = 0;
-    }
-    setIsSpeakingTTS(false);
-  };
-
-  useEffect(() => {
-    const audio = new Audio();
-    audioPlayerRef.current = audio;
-    audio.onended = () => setIsSpeakingTTS(false);
-    return () => {
-        if (audioPlayerRef.current) {
-            audioPlayerRef.current.pause();
-            audioPlayerRef.current = null;
-        }
-    };
-  }, []);
-
-
   return (
     <div className="w-full max-w-3xl mx-auto">
-      <Card className="container-card"> {/* Applied .container-card styles via globals.css */}
+      <Card className="container-card">
         <CardHeader className="p-6 md:p-8">
           <CardTitle className="text-3xl md:text-4xl font-extrabold text-center text-gray-100 mb-2">
-            <Stethoscope className="inline-block h-10 w-10 text-blue-400 mr-3" /> {/* Mapped from primary */}
+            <Stethoscope className="inline-block h-10 w-10 text-blue-400 mr-3" /> 
             مساعدك الطبي الذكي
           </CardTitle>
           <p className="text-center text-gray-300 mb-6 text-md md:text-lg">
@@ -653,9 +551,9 @@ ${userInput}
           </p>
         </CardHeader>
 
-        <CardContent className="p-6 md:p-8 pt-0"> {/* User HTML had padding 2.5rem for card, content had p-6, pt-0 is fine */}
-          <Alert variant="destructive" className="disclaimer-box mb-8"> {/* disclaimer-box styled in globals */}
-            <TriangleAlert className="h-5 w-5" /> {/* Default icon for destructive alert */}
+        <CardContent className="p-6 md:p-8 pt-0">
+          <Alert variant="destructive" className="disclaimer-box mb-8"> 
+            <TriangleAlert className="h-5 w-5" /> 
             <AlertTitle className="font-bold text-xl block mb-2">تنبيه هام جداً:</AlertTitle>
             <AlertDescription className="text-lg">
               هذه المعلومات لأغراض تعليمية وعامة فقط، ولا تحل محل الاستشارة الطبية المتخصصة.
@@ -668,7 +566,7 @@ ${userInput}
 
           {currentUserId && (
             <div id="userIdDisplay" className="user-id-display">
-              <UserCircle className="inline-block h-5 w-5 mr-2" /> {/* Mapped from fas fa-id-badge */}
+              <UserCircle className="inline-block h-5 w-5 mr-2" /> 
               <span>معرف المستخدم: </span><span id="currentUserIdSpan">{currentUserId}</span>
             </div>
           )}
@@ -677,12 +575,12 @@ ${userInput}
             {chatHistory.length === 0 ? (
               <p className="text-gray-400 text-center py-10">ابدأ محادثتك مع المساعد الطبي...</p>
             ) : (
-              chatHistory.map((msg, index) => (
-                <div key={msg.id || `msg-${index}`} className={`chat-message ${msg.role}`}>
+              chatHistory.map((msg) => (
+                <div key={msg.id} className={`chat-message ${msg.role}`}>
                   <div className="flex items-start gap-2.5">
                      {msg.role === 'user' ? 
                         <UserCircle className="h-6 w-6 text-gray-400 shrink-0" /> : 
-                        <Bot className="h-6 w-6 text-blue-400 shrink-0" /> // Mapped from primary
+                        <Bot className="h-6 w-6 text-blue-400 shrink-0" /> 
                      }
                     <div className="flex flex-col w-full max-w-[calc(100%-3rem)] leading-1.5">
                         <div className="flex items-center space-x-2 rtl:space-x-reverse mb-1">
@@ -696,7 +594,7 @@ ${userInput}
                         <p className="text-sm font-normal text-gray-100 py-2 whitespace-pre-wrap">{msg.text}</p>
                         {msg.imageUrl && (
                             <div className="mt-2">
-                            <Image src={msg.imageUrl} alt="صورة مرفقة" width={200} height={200} className="rounded-lg object-contain border border-gray-600" data-ai-hint="medical scan" />
+                            <Image src={msg.imageUrl} alt="صورة مرفقة" width={200} height={200} className="rounded-lg object-contain border border-gray-600" data-ai-hint="medical scan"/>
                             </div>
                         )}
                     </div>
@@ -708,7 +606,7 @@ ${userInput}
           
           <div className="mb-6 mt-6"> 
             <Label htmlFor="healthInput" className="block text-gray-100 text-xl font-semibold mb-3">
-              <ClipboardList className="inline-block h-6 w-6 text-green-400 mr-2" /> {/* Mapped from fas fa-notes-medical */}
+              <ClipboardList className="inline-block h-6 w-6 text-green-400 mr-2" /> 
               أدخل رسالتك هنا:
             </Label>
             <Textarea
@@ -725,21 +623,20 @@ ${userInput}
                 }
               }}
             />
-            <div className="mt-3 flex gap-2"> {/* control-group equivalent */}
+            <div className="mt-3 flex gap-2">
               <Button onClick={toggleListening} id="microphoneBtn" className={`control-btn ${isListening ? 'control-btn-red' : 'control-btn-green'}`} variant="default" size="default" disabled={!speechRecognitionRef.current || isLoading}>
                 {isListening ? <MicOff className="mr-2 h-5 w-5" /> : <Mic className="mr-2 h-5 w-5" />}
-                {isListening ? 'جارٍ الاستماع...' : 'تحدث'}
+                {isListening ? 'إيقاف الاستماع' : 'تحدث'}
               </Button>
-              {/* stopMicrophoneBtn from HTML is implicitly handled by toggleListening */}
             </div>
           </div>
 
           <div className="mb-8">
             <Label className="block text-gray-100 text-xl font-semibold mb-3">
-              <ImageIconLucide className="inline-block h-6 w-6 text-purple-400 mr-2" /> {/* Mapped from fas fa-image */}
+              <ImageIconLucide className="inline-block h-6 w-6 text-purple-400 mr-2" /> 
               أو ارفق صورة (اختياري):
             </Label>
-            <div className="flex flex-col md:flex-row items-start justify-center gap-6"> {/* Aligning with HTML structure */}
+            <div className="flex flex-col md:flex-row items-start justify-center gap-6">
               <div className="w-full md:w-1/2">
                 <Label htmlFor="imageUpload" className="block text-gray-300 text-lg font-medium mb-2">
                   تحميل من ملف:
@@ -747,7 +644,7 @@ ${userInput}
                 <div className="file-input-custom">
                   <input type="file" id="imageUpload" accept="image/*" onChange={handleImageUpload} ref={imageUploadRef} disabled={isLoading}/>
                   <label htmlFor="imageUpload">
-                    <Upload className="h-5 w-5" /> اختر ملف {/* Mapped from fas fa-upload */}
+                    <Upload className="h-5 w-5" /> اختر ملف 
                   </label>
                 </div>
               </div>
@@ -755,7 +652,7 @@ ${userInput}
                 <Label className="block text-gray-300 text-lg font-medium mb-2">
                   التقاط من الكاميرا:
                 </Label>
-                <div className="flex flex-wrap gap-2 mt-0"> {/* control-group equivalent */}
+                <div className="flex flex-wrap gap-2 mt-0">
                   {!cameraStream ? (
                     <Button onClick={handleStartCamera} id="startCameraBtn" className="control-btn control-btn-indigo" variant="default" size="default" disabled={isLoading}>
                       <Video className="mr-2 h-5 w-5" /> تشغيل الكاميرا
@@ -790,41 +687,24 @@ ${userInput}
           </div>
 
           <Button
-            id="sendMessageBtn" // consultBtn in HTML
+            id="sendMessageBtn"
             onClick={() => handleSendMessage()} 
             disabled={isLoading}
-            className="w-full control-btn control-btn-blue py-3 md:py-4 rounded-xl text-xl md:text-2xl" // Merged styles
+            className="w-full control-btn control-btn-blue py-3 md:py-4 rounded-xl text-xl md:text-2xl"
           >
             {isLoading ? (
               <>
-                <Loader2 className="mr-3 h-6 w-6 animate-spin" /> {/* Shadcn loader */}
+                <Loader2 className="mr-3 h-6 w-6 animate-spin" /> 
                 <span>جاري المعالجة...</span>
               </>
             ) : (
-              <span id="buttonText">إرسال الرسالة</span>
+              <>
+                <Send className="mr-2 h-5 w-5" />
+                <span id="buttonText">إرسال الرسالة</span>
+              </>
             )}
           </Button>
-
-          {/* TTS controls as per user HTML, targeting last AI message from chatHistory */}
-           <div className="mt-6 p-4 bg-card rounded-xl shadow-md">
-            <h3 className="text-lg font-semibold text-gray-100 mb-3">
-                <Volume2 className="inline-block h-5 w-5 text-blue-400 mr-2" />
-                الاستماع لآخر رد من المساعد:
-            </h3>
-            <div className="flex gap-2">
-                <Button id="playBtn" onClick={playLastAIResponse} className={`control-btn ${isSpeakingTTS ? 'control-btn-red' : 'control-btn-green'}`} disabled={isLoading || chatHistory.filter(m=>m.role==='model').length === 0}>
-                    {isSpeakingTTS ? <VolumeX className="mr-2 h-5 w-5" /> : <Volume2 className="mr-2 h-5 w-5" />}
-                    {isSpeakingTTS ? 'إيقاف مؤقت' : 'استمع'}
-                </Button>
-                {isSpeakingTTS && (
-                     <Button id="stopPlayBtn" onClick={stopSpeakingTTS} className="control-btn control-btn-gray">
-                        <VolumeX className="mr-2 h-5 w-5" /> إيقاف القراءة
-                    </Button>
-                )}
-            </div>
-          </div>
           
-          {/* Message Box from user's HTML */}
           <div id="messageBox" ref={messageBoxRef} className="message-box-global hidden mt-6">
             <p id="messageTextRef" ref={messageTextRef} className="font-medium text-lg"></p>
           </div>
@@ -834,3 +714,4 @@ ${userInput}
     </div>
   );
 }
+
