@@ -9,7 +9,7 @@ import {
   signInAnonymously,
   onAuthStateChanged,
   type Auth,
-  type User as FirebaseUser, // Renamed to avoid conflict with ChatMessage role
+  type User as FirebaseUser, 
 } from "firebase/auth";
 import {
   getFirestore,
@@ -25,11 +25,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"; // Kept for disclaimer
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 
-// Lucide icons to replace Font Awesome
 import {
   Stethoscope,
   UserCircle,
@@ -37,20 +36,20 @@ import {
   Mic,
   MicOff,
   Video,
-  RefreshCw, // For switch camera
+  RefreshCw, 
   Camera as CameraIcon,
   VideoOff,
   Bot,
-  Loader2, // Shadcn loader
-  Upload, // For file upload
-  Image as ImageIconLucide, // For image icon next to label
+  Loader2, 
+  Upload, 
+  ImageIcon as ImageIconLucide, 
   TriangleAlert,
-  Send, // For send button
+  Send, 
 } from "lucide-react";
 
-// Firebase configuration
+// Firebase configuration - Remains the same
 const firebaseConfig = {
-  apiKey: "AIzaSyCSPxKajkhJmKM42QFmQIEX0dcE-34CDDg", 
+  apiKey: "AIzaSyCSPxKajkhJmKM42QFmQIEX0dcE-34CDDg",
   authDomain: "doctor-assistniat.firebaseapp.com",
   projectId: "doctor-assistniat",
   storageBucket: "doctor-assistniat.firebasestorage.app",
@@ -60,31 +59,28 @@ const firebaseConfig = {
 };
 
 interface ChatMessage {
-  id?: string; 
-  role: "user" | "model"; // "model" for AI as per Gemini API
+  id?: string;
+  role: "user" | "model";
   text: string;
-  imageUrl?: string | null; 
+  imageUrl?: string | null;
   timestamp: Timestamp;
+  isStreaming?: boolean;
 }
 
-// For local history used in Gemini API call
 interface LocalChatMessageForAPI {
-    role: "user" | "model";
-    parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string; } }>;
-    timestamp?: string; // ISO string for local history, not sent to API in this structure
+  role: "user" | "model";
+  parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string; } }>;
+  timestamp?: string; 
 }
 
 
 export default function AIPoweredDoctorAssistantPage() {
   const [healthInput, setHealthInput] = useState("");
-  const [base64Image, setBase64Image] = useState<string | null>(null); // Will store full Data URI
-  const [imagePreview, setImagePreview] = useState<string | null>(null); // For display
-
+  const [base64Image, setBase64Image] = useState<string | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  
-  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]); // For Firestore and UI display
-  const [localChatHistoryForAPI, setLocalChatHistoryForAPI] = useState<LocalChatMessageForAPI[]>([]); // For Gemini API context
-
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const [localChatHistoryForAPI, setLocalChatHistoryForAPI] = useState<LocalChatMessageForAPI[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [appId, setAppId] = useState<string | null>(null);
 
@@ -95,24 +91,20 @@ export default function AIPoweredDoctorAssistantPage() {
   const imageUploadRef = useRef<HTMLInputElement>(null);
   const cameraFeedRef = useRef<HTMLVideoElement>(null);
   const cameraCanvasRef = useRef<HTMLCanvasElement>(null);
-
   const speechRecognitionRef = useRef<SpeechRecognition | null>(null);
   const [isListening, setIsListening] = useState(false);
-  
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [currentFacingMode, setCurrentFacingMode] = useState<"user" | "environment">("user");
 
   const chatHistoryContainerRef = useRef<HTMLDivElement>(null);
   const messageBoxRef = useRef<HTMLDivElement>(null);
   const messageTextRef = useRef<HTMLParagraphElement>(null);
-  
 
   const displayMessage = useCallback((message: string, type: 'info' | 'error' | 'warning' = 'info') => {
     if (messageBoxRef.current && messageTextRef.current) {
       messageTextRef.current.textContent = message;
-      messageBoxRef.current.className = `message-box-global ${type}`; 
+      messageBoxRef.current.className = `message-box-global ${type}`;
       messageBoxRef.current.classList.remove('hidden');
-      
       setTimeout(() => {
         if (messageBoxRef.current) {
           messageBoxRef.current.classList.add('hidden');
@@ -121,13 +113,12 @@ export default function AIPoweredDoctorAssistantPage() {
     }
   }, []);
 
-  const saveChatMessage = useCallback(async (message: ChatMessage) => {
+  const saveChatMessage = useCallback(async (message: Omit<ChatMessage, "id" | "isStreaming">) => {
     if (dbRef.current && currentUserId && appId) {
       try {
-        const { id, ...messageToSave } = message; // Exclude client-side id
         await addDoc(collection(dbRef.current, `artifacts/${appId}/users/${currentUserId}/medical_chat_history`), {
-          ...messageToSave,
-          imageUrl: messageToSave.imageUrl === undefined ? null : messageToSave.imageUrl,
+          ...message,
+          imageUrl: message.imageUrl === undefined ? null : message.imageUrl,
         });
       } catch (error: any) {
         console.error("Error saving chat message:", error);
@@ -135,37 +126,67 @@ export default function AIPoweredDoctorAssistantPage() {
       }
     }
   }, [currentUserId, appId, displayMessage]);
-  
-  const addMessageToChatUIAndLocalHistory = useCallback((role: "user" | "model", text: string, imageUrlForDisplay?: string | null, clientMessageId?: string) => {
+
+  const addOptimisticMessageToChat = useCallback((role: "user" | "model", text: string, imageUrlForDisplay?: string | null, isStreaming = false): string => {
+    const clientMessageId = `${Date.now()}-${Math.random()}`;
     const newMessageForUI: ChatMessage = {
-      id: clientMessageId || `${Date.now()}-${Math.random()}`, // Ensure a unique ID for UI key
+      id: clientMessageId,
       role,
       text,
       imageUrl: imageUrlForDisplay === undefined ? null : imageUrlForDisplay,
       timestamp: Timestamp.now(),
+      isStreaming,
     };
     setChatHistory(prev => [...prev, newMessageForUI]);
 
     const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string; } }> = [];
     if (text) parts.push({ text });
-    if (role === 'user' && base64Image) { 
-        const mimeType = imageUploadRef.current?.files?.[0]?.type || 'image/png';
-        const b64Data = base64Image.split(',')[1]; 
-        if(b64Data) parts.push({ inlineData: { mimeType, data: b64Data } });
+    if (role === 'user' && base64Image) {
+      const mimeType = imageUploadRef.current?.files?.[0]?.type || 'image/png';
+      const b64Data = base64Image.split(',')[1];
+      if (b64Data) parts.push({ inlineData: { mimeType, data: b64Data } });
     }
-    
-    const newMessageForAPI: LocalChatMessageForAPI = {
+
+    if (parts.length > 0) {
+      const newMessageForAPI: LocalChatMessageForAPI = {
         role,
         parts,
         timestamp: new Date().toISOString()
-    };
-    setLocalChatHistoryForAPI(prev => [...prev, newMessageForAPI]);
-
-    if (role === 'user') {
-      saveChatMessage(newMessageForUI);
+      };
+      setLocalChatHistoryForAPI(prev => [...prev, newMessageForAPI]);
     }
-    return newMessageForUI.id;
-  }, [saveChatMessage, base64Image]);
+    
+    if (role === 'user' && !isStreaming) {
+      // Save user message immediately (non-streaming)
+      saveChatMessage({ role, text, imageUrl: newMessageForUI.imageUrl, timestamp: newMessageForUI.timestamp });
+    }
+    return clientMessageId;
+  }, [base64Image, saveChatMessage]);
+
+
+  const updateStreamingAIMessageInChat = useCallback((clientMessageId: string, chunkText: string) => {
+    setChatHistory(prev => prev.map(msg =>
+      msg.id === clientMessageId ? { ...msg, text: (msg.text || "") + chunkText, isStreaming: true } : msg
+    ));
+  }, []);
+
+  const finalizeStreamingAIMessageInChat = useCallback((clientMessageId: string) => {
+    let finalMessage: ChatMessage | undefined;
+    setChatHistory(prev => {
+      const updatedHistory = prev.map(msg => {
+        if (msg.id === clientMessageId) {
+          finalMessage = { ...msg, isStreaming: false };
+          return finalMessage;
+        }
+        return msg;
+      });
+      return updatedHistory;
+    });
+
+    if (finalMessage) {
+      saveChatMessage({ role: finalMessage.role, text: finalMessage.text, imageUrl: finalMessage.imageUrl, timestamp: finalMessage.timestamp });
+    }
+  }, [saveChatMessage]);
 
 
   const stopCameraInternal = useCallback(() => {
@@ -180,7 +201,7 @@ export default function AIPoweredDoctorAssistantPage() {
   const captureImageFromCamera = useCallback(() => {
     if (!cameraStream || !cameraFeedRef.current || !cameraCanvasRef.current) {
       displayMessage("الكاميرا غير نشطة. يرجى تشغيل الكاميرا أولاً.", "error");
-      return null; 
+      return null;
     }
     const video = cameraFeedRef.current;
     const canvas = cameraCanvasRef.current;
@@ -188,44 +209,53 @@ export default function AIPoweredDoctorAssistantPage() {
     canvas.height = video.videoHeight;
     const context = canvas.getContext('2d');
     if (context) {
-      if (currentFacingMode === 'user') { 
+      if (currentFacingMode === 'user') {
         context.translate(canvas.width, 0);
         context.scale(-1, 1);
       }
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      if (currentFacingMode === 'user') { 
+      if (currentFacingMode === 'user') {
         context.setTransform(1, 0, 0, 1, 0, 0);
       }
-      const imageDataUrl = canvas.toDataURL('image/png'); 
-      setBase64Image(imageDataUrl); 
-      setImagePreview(imageDataUrl); 
+      const imageDataUrl = canvas.toDataURL('image/png');
+      setBase64Image(imageDataUrl);
+      setImagePreview(imageDataUrl);
       displayMessage("تم التقاط الصورة بنجاح!", "info");
-      return imageDataUrl; 
+      return imageDataUrl;
     }
     return null;
   }, [cameraStream, currentFacingMode, displayMessage]);
+
 
   const handleSendMessage = useCallback(async (sttInput?: string) => {
     const userInput = (typeof sttInput === 'string' ? sttInput : healthInput).trim();
     let currentImageToSendWithUserMessage = base64Image;
 
-    if (cameraStream && !currentImageToSendWithUserMessage) { 
-      const capturedImg = captureImageFromCamera(); 
+    const apiKey = ""; // IMPORTANT: User needs to provide their API key here.
+    
+    if (!apiKey) {
+      displayMessage("خطأ: مفتاح Gemini API غير موجود. يرجى إضافته في الكود (page.tsx) للمتابعة.", "error");
+      setIsLoading(false); // Reset loading state if we return early
+      return;
+    }
+
+    if (cameraStream && !currentImageToSendWithUserMessage) {
+      const capturedImg = captureImageFromCamera();
       if (capturedImg) {
         currentImageToSendWithUserMessage = capturedImg;
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 100)); 
       }
     }
-    
+
     if (!userInput && !currentImageToSendWithUserMessage) {
       displayMessage("الرجاء كتابة رسالة أو إرفاق/التقاط صورة أو التحدث.", "error");
       return;
     }
 
     setIsLoading(true);
-    if (cameraStream) stopCameraInternal(); 
+    if (cameraStream) stopCameraInternal();
 
-    addMessageToChatUIAndLocalHistory("user", userInput, imagePreview);
+    addOptimisticMessageToChat("user", userInput, imagePreview);
     
     const systemPrompt = `
 أنت مساعد طبي افتراضي ذكي ومحادث. مهمتك هي التفاعل مع المستخدمين وتقديم معلومات عامة **مفصلة ودقيقة قدر الإمكان** بناءً على وصفهم (نص أو صوت) وأي صور يشاركونها (مثل فحوصات أو ملاحظات مرئية).
@@ -260,36 +290,38 @@ export default function AIPoweredDoctorAssistantPage() {
 ${userInput}
 `;
     const contentsForAPI: any[] = [];
-    
+
     localChatHistoryForAPI.forEach(msg => {
-        if (msg.role !== "user" || !msg.parts.some(p => p.text?.includes("الرسالة الحالية من المستخدم:"))) {
-             contentsForAPI.push({ role: msg.role, parts: msg.parts });
-        }
+      if (msg.role !== "user" || !msg.parts.some(p => p.text?.includes("الرسالة الحالية من المستخدم:"))) {
+        contentsForAPI.push({ role: msg.role, parts: msg.parts });
+      }
     });
 
     const currentUserParts: Array<{ text?: string; inlineData?: { mimeType: string; data: string; } }> = [];
-    if (userInput) currentUserParts.push({ text: systemPrompt }); 
-    else if (currentImageToSendWithUserMessage) currentUserParts.push({text: "صف هذه الصورة من فضلك. " + systemPrompt});
+    if (userInput) currentUserParts.push({ text: systemPrompt });
+    else if (currentImageToSendWithUserMessage) currentUserParts.push({ text: "صف هذه الصورة من فضلك. " + systemPrompt });
 
 
     if (currentImageToSendWithUserMessage) {
-        const mimeType = imageUploadRef.current?.files?.[0]?.type || (currentImageToSendWithUserMessage.startsWith('data:image/png') ? 'image/png' : (currentImageToSendWithUserMessage.startsWith('data:image/jpeg') ? 'image/jpeg' : 'image/png'));
-        const b64Data = currentImageToSendWithUserMessage.split(',')[1];
-        if (b64Data) currentUserParts.push({ inlineData: { mimeType, data: b64Data } });
+      const mimeType = imageUploadRef.current?.files?.[0]?.type || (currentImageToSendWithUserMessage.startsWith('data:image/png') ? 'image/png' : (currentImageToSendWithUserMessage.startsWith('data:image/jpeg') ? 'image/jpeg' : 'image/png'));
+      const b64Data = currentImageToSendWithUserMessage.split(',')[1];
+      if (b64Data) currentUserParts.push({ inlineData: { mimeType, data: b64Data } });
     }
-    
+
     if (currentUserParts.length > 0) {
-        contentsForAPI.push({ role: "user", parts: currentUserParts });
+      contentsForAPI.push({ role: "user", parts: currentUserParts });
     }
-    
+
     const payload = { contents: contentsForAPI };
-    const apiKey = ""; // IMPORTANT: User needs to provide their API key here.
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
     
-    setHealthInput(""); 
-    setBase64Image(null); 
-    setImagePreview(null); 
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+
+    setHealthInput("");
+    setBase64Image(null);
+    setImagePreview(null);
     if (imageUploadRef.current) imageUploadRef.current.value = "";
+    
+    const aiMessageClientId = addOptimisticMessageToChat("model", "جاري الكتابة...", null, true);
 
     try {
       const response = await fetch(apiUrl, {
@@ -299,43 +331,74 @@ ${userInput}
       });
 
       if (!response.ok) {
-        const errorBody = await response.json();
-        console.error("API Error Response:", errorBody);
-        throw new Error(`API request failed with status ${response.status}: ${errorBody?.error?.message || response.statusText}`);
+        let errorBodyContent = `Status: ${response.status} ${response.statusText}`;
+        try {
+          const errorBodyJson = await response.json();
+          console.error("API Error JSON Response:", errorBodyJson); // Log the actual JSON
+          // Check if errorBodyJson is an empty object
+          if (Object.keys(errorBodyJson).length === 0 && errorBodyJson.constructor === Object) {
+            errorBodyContent = `API request failed with status ${response.status}. The server returned an empty error response. Please check your API key and network.`;
+          } else {
+            errorBodyContent = errorBodyJson?.error?.message || JSON.stringify(errorBodyJson) || `Status: ${response.status}`;
+          }
+        } catch (jsonError) {
+          console.warn("Failed to parse API error response as JSON:", jsonError);
+          try {
+            const rawErrorText = await response.text();
+            console.error("API Error Raw Text Response:", rawErrorText);
+            errorBodyContent = rawErrorText || errorBodyContent;
+          } catch (textError) {
+            console.warn("Failed to read API error response as text:", textError);
+          }
+        }
+        throw new Error(`API request failed. ${errorBodyContent}`);
       }
 
       const result = await response.json();
 
       if (result.candidates && result.candidates.length > 0 &&
-          result.candidates[0].content && result.candidates[0].content.parts &&
-          result.candidates[0].content.parts.length > 0) {
+        result.candidates[0].content && result.candidates[0].content.parts &&
+        result.candidates[0].content.parts.length > 0) {
         const aiTextResponse = result.candidates[0].content.parts[0].text || "لم يتمكن المساعد من إنشاء رد نصي.";
         
-        const aiMessage = addMessageToChatUIAndLocalHistory("model", aiTextResponse, null); 
-        saveChatMessage({ role: "model", text: aiTextResponse, imageUrl: null, timestamp: Timestamp.now(), id: aiMessage });
-
+        // Update the streaming message with the final content
+        setChatHistory(prev => prev.map(msg => 
+            msg.id === aiMessageClientId ? { ...msg, text: aiTextResponse, isStreaming: false } : msg
+        ));
+        // Save the finalized AI message
+        const finalAIMessage = chatHistory.find(msg => msg.id === aiMessageClientId);
+        if (finalAIMessage) {
+             saveChatMessage({ role: "model", text: aiTextResponse, imageUrl: null, timestamp: finalAIMessage.timestamp });
+        } else { // Fallback if not found, though unlikely
+             saveChatMessage({ role: "model", text: aiTextResponse, imageUrl: null, timestamp: Timestamp.now() });
+        }
         displayMessage('تمت الاستشارة بنجاح!', 'info');
       } else {
         console.error("Unexpected API response structure:", result);
         const errMsg = 'حدث خطأ في معالجة طلبك أو كانت الاستجابة فارغة.';
-        const aiMessage = addMessageToChatUIAndLocalHistory("model", errMsg, null);
-        saveChatMessage({role: "model", text: errMsg, imageUrl:null, timestamp: Timestamp.now(), id: aiMessage});
+        setChatHistory(prev => prev.map(msg => 
+            msg.id === aiMessageClientId ? { ...msg, text: errMsg, isStreaming: false } : msg
+        ));
+        saveChatMessage({ role: "model", text: errMsg, imageUrl: null, timestamp: Timestamp.now() });
         displayMessage(errMsg, 'error');
       }
     } catch (error: any) {
       console.error("Error calling Gemini API:", error);
       const errMsg = `خطأ في الاتصال بالذكاء الاصطناعي: ${error.message}`;
-      const aiMessage = addMessageToChatUIAndLocalHistory("model", errMsg, null);
-      saveChatMessage({role: "model", text: errMsg, imageUrl:null, timestamp: Timestamp.now(), id: aiMessage});
+      setChatHistory(prev => prev.map(msg => 
+        msg.id === aiMessageClientId ? { ...msg, text: errMsg, isStreaming: false } : msg
+      ));
+      saveChatMessage({ role: "model", text: errMsg, imageUrl: null, timestamp: Timestamp.now() });
       displayMessage(errMsg, 'error');
     } finally {
       setIsLoading(false);
     }
   }, [
     healthInput, base64Image, imagePreview, cameraStream, currentFacingMode,
-    displayMessage, addMessageToChatUIAndLocalHistory, saveChatMessage,
-    captureImageFromCamera, stopCameraInternal, localChatHistoryForAPI
+    displayMessage, addOptimisticMessageToChat, saveChatMessage, stopCameraInternal,
+    captureImageFromCamera, localChatHistoryForAPI, updateStreamingAIMessageInChat, finalizeStreamingAIMessageInChat, chatHistory
   ]);
+
 
   useEffect(() => {
     if (!appRef.current) {
@@ -363,7 +426,7 @@ ${userInput}
     }
   }, [displayMessage]);
 
-   useEffect(() => {
+  useEffect(() => {
     if (dbRef.current && currentUserId && appId) {
       const chatCollectionRef = collection(dbRef.current, `artifacts/${appId}/users/${currentUserId}/medical_chat_history`);
       const q = query(chatCollectionRef, orderBy("timestamp", "asc"));
@@ -374,12 +437,12 @@ ${userInput}
 
         snapshot.forEach(doc => {
           const data = doc.data();
-          const messageForUI: ChatMessage = { 
-            id: doc.id, 
+          const messageForUI: ChatMessage = {
+            id: doc.id,
             role: data.role,
             text: data.text,
-            imageUrl: data.imageUrl === undefined ? null : data.imageUrl, 
-            timestamp: data.timestamp 
+            imageUrl: data.imageUrl === undefined ? null : data.imageUrl,
+            timestamp: data.timestamp
           };
           newHistoryFromDB.push(messageForUI);
 
@@ -388,21 +451,23 @@ ${userInput}
           if (data.imageUrl) {
             const b64Data = data.imageUrl.split(',')[1];
             if (b64Data) {
-                 const mimeType = data.imageUrl.substring(data.imageUrl.indexOf(':') + 1, data.imageUrl.indexOf(';'));
-                 parts.push({ inlineData: { mimeType: mimeType || 'image/png', data: b64Data } });
+              const mimeType = data.imageUrl.substring(data.imageUrl.indexOf(':') + 1, data.imageUrl.indexOf(';'));
+              parts.push({ inlineData: { mimeType: mimeType || 'image/png', data: b64Data } });
             }
           }
-           if (parts.length > 0) {
+          if (parts.length > 0) {
             newLocalHistoryForAPI.push({ role: data.role, parts });
-           }
+          }
         });
         setChatHistory(newHistoryFromDB);
         setLocalChatHistoryForAPI(newLocalHistoryForAPI);
 
-        if (snapshot.empty) {
-             displayMessage('تم تحميل سجل المحادثات وهو فارغ حاليًا.', 'info');
-        } else {
-             displayMessage('تم تحميل سجل المحادثات.', 'info');
+        if (!snapshot.metadata.hasPendingWrites) { // Only show message once initial load is complete
+            if (snapshot.empty) {
+                displayMessage('تم تحميل سجل المحادثات وهو فارغ حاليًا.', 'info');
+            } else {
+                displayMessage('تم تحميل سجل المحادثات.', 'info');
+            }
         }
 
       }, (error) => {
@@ -413,13 +478,12 @@ ${userInput}
     }
   }, [currentUserId, appId, displayMessage]);
 
-   useEffect(() => {
+  useEffect(() => {
     if (chatHistoryContainerRef.current) {
       chatHistoryContainerRef.current.scrollTop = chatHistoryContainerRef.current.scrollHeight;
     }
   }, [chatHistory]);
 
-  // Speech Recognition (STT) Setup
   useEffect(() => {
     if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
       const SpeechRecognitionAPI = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -427,20 +491,20 @@ ${userInput}
       
       if (speechRecognitionRef.current) {
         const currentRecognition = speechRecognitionRef.current;
-        currentRecognition.continuous = true; 
-        currentRecognition.interimResults = true; 
+        currentRecognition.continuous = true;
+        currentRecognition.interimResults = true;
         currentRecognition.lang = 'ar-SA';
 
         currentRecognition.onstart = () => {
           setIsListening(true);
           displayMessage('الاستماع المستمر... تحدث الآن.', 'info');
-          setHealthInput(''); 
+          setHealthInput('');
         };
-        
+
         currentRecognition.onresult = (event: any) => {
           let currentTranscript = '';
           for (let i = event.resultIndex; i < event.results.length; ++i) {
-              currentTranscript += event.results[i][0].transcript;
+            currentTranscript += event.results[i][0].transcript;
           }
           setHealthInput(currentTranscript);
         };
@@ -453,34 +517,33 @@ ${userInput}
 
         currentRecognition.onerror = (event: any) => {
           console.error('Speech recognition error:', event.error);
-          if (event.error !== 'no-speech' && event.error !== 'aborted') { 
-               displayMessage(`خطأ في التعرف على الكلام: ${event.error}`, "error");
+          if (event.error !== 'no-speech' && event.error !== 'aborted') {
+            displayMessage(`خطأ في التعرف على الكلام: ${event.error}`, "error");
           } else if (event.error === 'no-speech') {
-              displayMessage('لم يتم اكتشاف أي كلام.', 'warning');
+            displayMessage('لم يتم اكتشاف أي كلام.', 'warning');
           }
           setIsListening(false);
         };
       }
     } else {
-        displayMessage('متصفحك لا يدعم ميزة التعرف على الكلام.', 'warning');
+      displayMessage('متصفحك لا يدعم ميزة التعرف على الكلام.', 'warning');
     }
-    
+
     return () => {
       if (speechRecognitionRef.current && isListening) {
         speechRecognitionRef.current.stop();
       }
     };
-  }, [displayMessage, isListening, healthInput]);
-
+  }, [displayMessage, isListening, handleSendMessage]); // Added handleSendMessage, though it's not directly called here, it's part of the flow STT used to trigger implicitly.
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onload = (e) => {
-        const dataUrl = e.target?.result as string; 
+        const dataUrl = e.target?.result as string;
         setImagePreview(dataUrl);
-        setBase64Image(dataUrl); 
+        setBase64Image(dataUrl);
         displayMessage("تم اختيار الصورة.", "info");
       };
       reader.onerror = (error) => {
@@ -495,24 +558,24 @@ ${userInput}
       setImagePreview(null);
     }
   };
-  
+
   const toggleListening = () => {
     if (!speechRecognitionRef.current) return;
     if (isListening) {
       speechRecognitionRef.current.stop();
     } else {
       try {
-        setHealthInput(""); 
+        setHealthInput("");
         speechRecognitionRef.current.start();
       } catch (e: any) {
         displayMessage(`خطأ في بدء الميكروفون: ${e.message}`, "error");
-        setIsListening(false); 
+        setIsListening(false);
       }
     }
   };
 
   const startCamera = async (facingMode: "user" | "environment") => {
-    if (cameraStream) stopCameraInternal(); 
+    if (cameraStream) stopCameraInternal();
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode } });
       if (cameraFeedRef.current) {
@@ -524,10 +587,10 @@ ${userInput}
     } catch (error: any) {
       console.error('Error accessing camera:', error);
       displayMessage(`خطأ في الكاميرا: ${error.message}`, "error");
-      stopCameraInternal(); 
+      stopCameraInternal();
     }
   };
-  
+
   const handleStartCamera = () => {
     startCamera(currentFacingMode);
   };
@@ -535,7 +598,7 @@ ${userInput}
   const switchCamera = () => {
     const newFacingMode = currentFacingMode === "user" ? "environment" : "user";
     setCurrentFacingMode(newFacingMode);
-    startCamera(newFacingMode); 
+    startCamera(newFacingMode);
   };
 
   return (
@@ -543,7 +606,7 @@ ${userInput}
       <Card className="container-card">
         <CardHeader className="p-6 md:p-8">
           <CardTitle className="text-3xl md:text-4xl font-extrabold text-center text-gray-100 mb-2">
-            <Stethoscope className="inline-block h-10 w-10 text-blue-400 mr-3" /> 
+            <Stethoscope className="inline-block h-10 w-10 text-blue-400 mr-3" />
             مساعدك الطبي الذكي
           </CardTitle>
           <p className="text-center text-gray-300 mb-6 text-md md:text-lg">
@@ -552,8 +615,8 @@ ${userInput}
         </CardHeader>
 
         <CardContent className="p-6 md:p-8 pt-0">
-          <Alert variant="destructive" className="disclaimer-box mb-8"> 
-            <TriangleAlert className="h-5 w-5" /> 
+          <Alert variant="destructive" className="disclaimer-box mb-8">
+            <TriangleAlert className="h-5 w-5" />
             <AlertTitle className="font-bold text-xl block mb-2">تنبيه هام جداً:</AlertTitle>
             <AlertDescription className="text-lg">
               هذه المعلومات لأغراض تعليمية وعامة فقط، ولا تحل محل الاستشارة الطبية المتخصصة.
@@ -566,7 +629,7 @@ ${userInput}
 
           {currentUserId && (
             <div id="userIdDisplay" className="user-id-display">
-              <UserCircle className="inline-block h-5 w-5 mr-2" /> 
+              <UserCircle className="inline-block h-5 w-5 mr-2" />
               <span>معرف المستخدم: </span><span id="currentUserIdSpan">{currentUserId}</span>
             </div>
           )}
@@ -578,35 +641,40 @@ ${userInput}
               chatHistory.map((msg) => (
                 <div key={msg.id} className={`chat-message ${msg.role}`}>
                   <div className="flex items-start gap-2.5">
-                     {msg.role === 'user' ? 
-                        <UserCircle className="h-6 w-6 text-gray-400 shrink-0" /> : 
-                        <Bot className="h-6 w-6 text-blue-400 shrink-0" /> 
-                     }
+                    {msg.role === 'user' ?
+                      <UserCircle className="h-6 w-6 text-gray-400 shrink-0" /> :
+                      <Bot className="h-6 w-6 text-blue-400 shrink-0" />
+                    }
                     <div className="flex flex-col w-full max-w-[calc(100%-3rem)] leading-1.5">
-                        <div className="flex items-center space-x-2 rtl:space-x-reverse mb-1">
-                            <span className="text-sm font-semibold text-gray-100">
-                                {msg.role === 'user' ? 'أنت' : 'المساعد'}
-                            </span>
-                            <span className="text-xs font-normal text-gray-500">
-                                {msg.timestamp && new Date(msg.timestamp.seconds * 1000).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}
-                            </span>
+                      <div className="flex items-center space-x-2 rtl:space-x-reverse mb-1">
+                        <span className="text-sm font-semibold text-gray-100">
+                          {msg.role === 'user' ? 'أنت' : 'المساعد'}
+                        </span>
+                        <span className="text-xs font-normal text-gray-500">
+                          {msg.timestamp && new Date(msg.timestamp.seconds * 1000).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <p className="text-sm font-normal text-gray-100 py-2 whitespace-pre-wrap">
+                        {msg.isStreaming && msg.role === 'model' && msg.text === "جاري الكتابة..." ? 
+                            <span className="italic opacity-75">{msg.text}</span> : 
+                            msg.text
+                        }
+                      </p>
+                      {msg.imageUrl && (
+                        <div className="mt-2">
+                          <Image src={msg.imageUrl} alt="صورة مرفقة" width={200} height={200} className="rounded-lg object-contain border border-gray-600" data-ai-hint="medical scan"/>
                         </div>
-                        <p className="text-sm font-normal text-gray-100 py-2 whitespace-pre-wrap">{msg.text}</p>
-                        {msg.imageUrl && (
-                            <div className="mt-2">
-                            <Image src={msg.imageUrl} alt="صورة مرفقة" width={200} height={200} className="rounded-lg object-contain border border-gray-600" data-ai-hint="medical scan"/>
-                            </div>
-                        )}
+                      )}
                     </div>
                   </div>
                 </div>
               ))
             )}
           </ScrollArea>
-          
-          <div className="mb-6 mt-6"> 
+
+          <div className="mb-6 mt-6">
             <Label htmlFor="healthInput" className="block text-gray-100 text-xl font-semibold mb-3">
-              <ClipboardList className="inline-block h-6 w-6 text-green-400 mr-2" /> 
+              <ClipboardList className="inline-block h-6 w-6 text-green-400 mr-2" />
               أدخل رسالتك هنا:
             </Label>
             <Textarea
@@ -633,7 +701,7 @@ ${userInput}
 
           <div className="mb-8">
             <Label className="block text-gray-100 text-xl font-semibold mb-3">
-              <ImageIconLucide className="inline-block h-6 w-6 text-purple-400 mr-2" /> 
+              <ImageIconLucide className="inline-block h-6 w-6 text-purple-400 mr-2" />
               أو ارفق صورة (اختياري):
             </Label>
             <div className="flex flex-col md:flex-row items-start justify-center gap-6">
@@ -642,9 +710,9 @@ ${userInput}
                   تحميل من ملف:
                 </Label>
                 <div className="file-input-custom">
-                  <input type="file" id="imageUpload" accept="image/*" onChange={handleImageUpload} ref={imageUploadRef} disabled={isLoading}/>
+                  <input type="file" id="imageUpload" accept="image/*" onChange={handleImageUpload} ref={imageUploadRef} disabled={isLoading} />
                   <label htmlFor="imageUpload">
-                    <Upload className="h-5 w-5" /> اختر ملف 
+                    <Upload className="h-5 w-5" /> اختر ملف
                   </label>
                 </div>
               </div>
@@ -660,12 +728,12 @@ ${userInput}
                   ) : (
                     <>
                       <Button onClick={switchCamera} id="switchCameraBtn" className="control-btn control-btn-orange" variant="default" size="default" disabled={isLoading}>
-                        <RefreshCw className="mr-2 h-5 w-5" /> تبديل 
+                        <RefreshCw className="mr-2 h-5 w-5" /> تبديل
                       </Button>
                       <Button onClick={captureImageFromCamera} id="captureImageBtn" className="control-btn control-btn-teal" variant="default" size="default" disabled={isLoading}>
                         <CameraIcon className="mr-2 h-5 w-5" /> التقاط
                       </Button>
-                       <Button onClick={stopCameraInternal} id="stopCameraBtn" className="control-btn control-btn-gray" variant="secondary" size="default" disabled={isLoading}>
+                      <Button onClick={stopCameraInternal} id="stopCameraBtn" className="control-btn control-btn-gray" variant="secondary" size="default" disabled={isLoading}>
                         <VideoOff className="mr-2 h-5 w-5" /> إيقاف
                       </Button>
                     </>
@@ -679,22 +747,22 @@ ${userInput}
                 )}
               </div>
             </div>
-            {imagePreview && ( 
+            {imagePreview && (
               <div id="imagePreview" className="image-preview-container mt-6 h-48">
-                <Image src={imagePreview} alt="معاينة الصورة" width={180} height={180} className="max-h-full max-w-full object-contain rounded-lg" data-ai-hint="medical image" />
+                <Image src={imagePreview} alt="معاينة الصورة" width={180} height={180} className="max-h-full max-w-full object-contain rounded-lg" data-ai-hint="medical image"/>
               </div>
             )}
           </div>
 
           <Button
             id="sendMessageBtn"
-            onClick={() => handleSendMessage()} 
+            onClick={() => handleSendMessage()}
             disabled={isLoading}
             className="w-full control-btn control-btn-blue py-3 md:py-4 rounded-xl text-xl md:text-2xl"
           >
             {isLoading ? (
               <>
-                <Loader2 className="mr-3 h-6 w-6 animate-spin" /> 
+                <Loader2 className="mr-3 h-6 w-6 animate-spin" />
                 <span>جاري المعالجة...</span>
               </>
             ) : (
@@ -704,7 +772,7 @@ ${userInput}
               </>
             )}
           </Button>
-          
+
           <div id="messageBox" ref={messageBoxRef} className="message-box-global hidden mt-6">
             <p id="messageTextRef" ref={messageTextRef} className="font-medium text-lg"></p>
           </div>
