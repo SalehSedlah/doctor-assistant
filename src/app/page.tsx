@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
@@ -192,7 +193,7 @@ export default function AIPoweredDoctorAssistantPage() {
     const newMessage: ChatMessage = {
       role,
       text,
-      imageUrl,
+      imageUrl: imageUrl || null, // Ensure imageUrl is null if undefined/empty
       timestamp: Timestamp.now(),
     };
     setChatHistory(prev => [...prev, newMessage]); // Optimistic update
@@ -623,3 +624,6 @@ export default function AIPoweredDoctorAssistantPage() {
     </div>
   );
 }
+
+
+    
