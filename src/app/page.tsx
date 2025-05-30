@@ -118,7 +118,7 @@ export default function AIPoweredDoctorAssistantPage() {
       try {
         await addDoc(collection(dbRef.current, `artifacts/${appId}/users/${currentUserId}/medical_chat_history`), {
           ...message,
-          imageUrl: message.imageUrl === undefined ? null : message.imageUrl,
+          imageUrl: message.imageUrl === undefined ? null : message.imageUrl, // Ensure imageUrl is null if undefined
         });
       } catch (error: any) {
         console.error("Error saving chat message:", error);
@@ -126,7 +126,7 @@ export default function AIPoweredDoctorAssistantPage() {
       }
     }
   }, [currentUserId, appId, displayMessage]);
-
+  
   const addOptimisticMessageToChat = useCallback((role: "user" | "model", text: string, imageUrlForDisplay?: string | null, isStreaming = false): string => {
     const clientMessageId = `${Date.now()}-${Math.random()}`;
     const newMessageForUI: ChatMessage = {
@@ -138,7 +138,7 @@ export default function AIPoweredDoctorAssistantPage() {
       isStreaming,
     };
     setChatHistory(prev => [...prev, newMessageForUI]);
-
+  
     const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string; } }> = [];
     if (text) parts.push({ text });
     
@@ -148,13 +148,12 @@ export default function AIPoweredDoctorAssistantPage() {
       const b64Data = base64Image.split(',')[1];
       if (b64Data) parts.push({ inlineData: { mimeType, data: b64Data } });
     }
-
-
+  
     if (parts.length > 0) {
       const newMessageForAPI: LocalChatMessageForAPI = {
         role,
         parts,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString() 
       };
       setLocalChatHistoryForAPI(prev => [...prev, newMessageForAPI]);
     }
@@ -164,14 +163,14 @@ export default function AIPoweredDoctorAssistantPage() {
     }
     return clientMessageId;
   }, [base64Image, saveChatMessage]);
-
-
+  
+  
   const updateStreamingAIMessageInChat = useCallback((clientMessageId: string, chunkText: string) => {
     setChatHistory(prev => prev.map(msg =>
       msg.id === clientMessageId ? { ...msg, text: (msg.text || "") + chunkText, isStreaming: true } : msg
     ));
   }, []);
-
+  
   const finalizeStreamingAIMessageInChat = useCallback((clientMessageId: string) => {
     let finalMessage: ChatMessage | undefined;
     setChatHistory(prev => {
@@ -184,12 +183,11 @@ export default function AIPoweredDoctorAssistantPage() {
       });
       return updatedHistory;
     });
-
+  
     if (finalMessage) {
       saveChatMessage({ role: finalMessage.role, text: finalMessage.text, imageUrl: finalMessage.imageUrl, timestamp: finalMessage.timestamp });
     }
   }, [saveChatMessage]);
-
 
   const stopCameraInternal = useCallback(() => {
     if (cameraStream) {
@@ -220,7 +218,7 @@ export default function AIPoweredDoctorAssistantPage() {
         context.setTransform(1, 0, 0, 1, 0, 0);
       }
       const imageDataUrl = canvas.toDataURL('image/png');
-      setBase64Image(imageDataUrl); // This is the full data URI
+      setBase64Image(imageDataUrl); 
       setImagePreview(imageDataUrl);
       displayMessage("تم التقاط الصورة بنجاح!", "info");
       return imageDataUrl;
@@ -231,8 +229,8 @@ export default function AIPoweredDoctorAssistantPage() {
 
   const handleSendMessage = useCallback(async (sttInput?: string) => {
     const userInput = (typeof sttInput === 'string' ? sttInput : healthInput).trim();
-    let currentImageToSendWithUserMessage = base64Image; // This holds the full data URI
-
+    let currentImageToSendWithUserMessage = base64Image; 
+    
     const apiKey = "AIzaSyAWTysN_zMdRn-MVt6mv9XxbcG0vAt7ujc"; 
     
     if (!apiKey) {
@@ -244,7 +242,7 @@ export default function AIPoweredDoctorAssistantPage() {
     if (cameraStream && !currentImageToSendWithUserMessage) {
       const capturedImg = captureImageFromCamera();
       if (capturedImg) {
-        currentImageToSendWithUserMessage = capturedImg; // capturedImg is also full data URI
+        currentImageToSendWithUserMessage = capturedImg; 
         await new Promise(resolve => setTimeout(resolve, 100)); 
       }
     }
@@ -257,7 +255,7 @@ export default function AIPoweredDoctorAssistantPage() {
     setIsLoading(true);
     if (cameraStream) stopCameraInternal();
 
-    addOptimisticMessageToChat("user", userInput, imagePreview); // imagePreview is the data URI for display
+    addOptimisticMessageToChat("user", userInput, imagePreview); 
     
     const systemPrompt = `
 أنت مساعد طبي افتراضي ذكي ومحادث. مهمتك هي التفاعل مع المستخدمين وتقديم معلومات عامة **مفصلة ودقيقة قدر الإمكان** بناءً على وصفهم (نص أو صوت) وأي صور يشاركونها (مثل فحوصات أو ملاحظات مرئية).
@@ -274,17 +272,13 @@ export default function AIPoweredDoctorAssistantPage() {
 * **إذا كانت المعلومات الأولية غير كافية لتقديم استجابة مفصلة، اطرح أسئلة محددة وموجهة للمريض لجمع المزيد من التفاصيل.**
     * **ركز على أسئلة حول:** مدة الأعراض، شدتها، العوامل التي تزيدها أو تخففها، الأعراض المصاحبة الأخرى، التاريخ الطبي السابق ذي الصلة، الأدوية الحالية، الحساسية.
     * **مثال على سؤال:** "هل يمكنك وصف الألم بشكل أدق؟ هل هو حاد أم خفيف؟ هل ينتشر إلى مناطق أخرى؟"
-    * **لا تطلب فحوصات في كل مرة.** اطلبها فقط إذا كانت المعلومات غير كافية بشكل واضح بعد طرح الأسئلة.
 * إذا قدم المستخدم أعراضًا (نصية أو مرئية):
-    1.  **اذكر بشكل مفصل** بعض الأمراض أو الحالات المحتملة التي قد تتوافق مع الأعراض المذكورة، مع شرح موجز لكل منها.
-        * **ركز على الاحتمالات الشائعة أو الأكثر ملاءمة للأعراض المذكورة.**
-        * **اذكر سبب كون كل احتمال واردًا بناءً على الأعراض المقدمة.**
-        * **تجنب ذكر احتمالات عشوائية أو نادرة جدًا ما لم تكن الأعراض تشير إليها بوضوح.**
-    2.  **اقترح أنواعًا محددة وواضحة** من الفحوصات الطبية التي قد تكون ضرورية لتشخيص هذه الحالات، مع شرح موجز لغرض كل فحص وكيف يمكن أن يساعد في التمييز بين الاحتمالات.
-    3.  **اذكر فئات الأدوية العامة** التي تستخدم عادة لعلاج هذه الحالات، مع إعطاء أمثلة لفئات الأدوية (مثل المضادات الحيوية، مضادات الالتهاب، خافضات الحرارة) وشرح موجز لآلية عملها بشكل عام.
+    1.  **اذكر بالتفصيل** بعض الأمراض أو الحالات المحتملة التي قد تتوافق مع الأعراض المذكورة. **اشرح بوضوح** سبب كون كل احتمال واردًا بناءً على الأعراض المقدمة.
+    2.  **اقترح أنواعًا محددة وواضحة** من الفحوصات الطبية التي قد تكون ضرورية لتشخيص هذه الحالات. **اشرح بإيجاز ودقة** الغرض من كل فحص مقترح وكيف يمكن أن يساعد في التمييز بين الاحتمالات المطروحة.
+    3.  **اذكر فئات الأدوية العامة** (وليس أسماء تجارية محددة) التي تستخدم عادة لعلاج مثل هذه الحالات. **أعطِ أمثلة واضحة** لهذه الفئات (مثل: المضادات الحيوية لعلاج العدوى البكتيرية، مضادات الالتهاب غير الستيرويدية لتخفيف الألم والالتهاب، خافضات الحرارة لارتفاع درجة الحرارة) مع شرح موجز لآلية عملها بشكل عام.
 * إذا أرسل المريض فحصًا طبيًا أو تقريرًا (بيانات مختبر، نتائج أشعة، نص أو صورة):
-    1.  **اشرح بالتفصيل** ما قد تعنيه النتائج المذكورة أو المرئية في الفحص بشكل عام، مع الإشارة إلى القيم الطبيعية (إذا كانت ذات صلة) وما قد تشير إليه القيم غير الطبيعية.
-    2.  **اذكر فئات الأدوية العامة** التي قد تكون ذات صلة بالحالات التي قد تشير إليها نتائج الفحص، مع شرح موجز لآلية عملها بشكل عام.
+    1.  **اشرح بالتفصيل وبدقة** ما قد تعنيه النتائج المذكورة أو المرئية في الفحص بشكل عام. إذا كانت هناك قيم، قارنها بالقيم الطبيعية (إذا كانت ذات صلة ومتوفرة بشكل عام) واشرح ما قد تشير إليه القيم غير الطبيعية.
+    2.  **اذكر فئات الأدوية العامة** (وليس أسماء تجارية محددة) التي قد تكون ذات صلة بالحالات التي قد تشير إليها نتائج الفحص، مع شرح موجز لآلية عملها بشكل عام.
 * إذا كانت الصورة غير واضحة أو غير كافية: اطلب من المستخدم توضيح الصورة أو تقديم المزيد من التفاصيل النصية.
 * **انهِ كل رد بتذكير واضح ومباشر:** "ملاحظة هامة جداً: هذه المعلومات هي لأغراض تعليمية وعامة فقط، ولا تحل محل الاستشارة الطبية المتخصصة. يجب دائمًا استشارة طبيب مؤهل للحصول على تشخيص دقيق وخطة علاج مناسبة."
 
@@ -300,12 +294,11 @@ ${userInput}
     });
 
     const currentUserParts: Array<{ text?: string; inlineData?: { mimeType: string; data: string; } }> = [];
-    if (userInput) currentUserParts.push({ text: systemPrompt }); // System prompt is prepended to user's text
+    if (userInput) currentUserParts.push({ text: systemPrompt }); 
     else if (currentImageToSendWithUserMessage) currentUserParts.push({ text: "صف هذه الصورة من فضلك. " + systemPrompt });
 
 
     if (currentImageToSendWithUserMessage) {
-       // currentImageToSendWithUserMessage is already the full data URI
       const mimeTypeMatch = currentImageToSendWithUserMessage.match(/^data:(image\/[a-zA-Z+]+);base64,/);
       const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : 'image/png';
       const b64Data = currentImageToSendWithUserMessage.split(',')[1];
@@ -369,7 +362,7 @@ ${userInput}
         ));
         
         const finalAIMsgFromHistory = chatHistory.find(msg => msg.id === aiMessageClientId);
-        if (finalAIMsgFromHistory) { // Should always be true now
+        if (finalAIMsgFromHistory) { 
              saveChatMessage({ role: "model", text: aiTextResponse, imageUrl: null, timestamp: finalAIMsgFromHistory.timestamp });
         } else { 
              saveChatMessage({ role: "model", text: aiTextResponse, imageUrl: null, timestamp: Timestamp.now() });
@@ -452,7 +445,6 @@ ${userInput}
           const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string; } }> = [];
           if (data.text) parts.push({ text: data.text });
           if (data.imageUrl) {
-            // Assuming imageUrl is stored as a data URI
             const mimeTypeMatch = data.imageUrl.match(/^data:(image\/[a-zA-Z+]+);base64,/);
             const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : 'image/png';
             const b64Data = data.imageUrl.split(',')[1];
@@ -548,7 +540,7 @@ ${userInput}
       reader.onload = (e) => {
         const dataUrl = e.target?.result as string;
         setImagePreview(dataUrl);
-        setBase64Image(dataUrl); // Store the full data URI
+        setBase64Image(dataUrl); 
         displayMessage("تم اختيار الصورة.", "info");
       };
       reader.onerror = (error) => {
@@ -570,7 +562,7 @@ ${userInput}
       speechRecognitionRef.current.stop();
     } else {
       try {
-        setHealthInput("");
+        setHealthInput(""); 
         speechRecognitionRef.current.start();
       } catch (e: any) {
         displayMessage(`خطأ في بدء الميكروفون: ${e.message}`, "error");
@@ -699,7 +691,7 @@ ${userInput}
             <div className="mt-3 flex gap-2">
               <Button onClick={toggleListening} id="microphoneBtn" className={`control-btn ${isListening ? 'control-btn-red' : 'control-btn-green'}`} variant="default" size="default" disabled={!speechRecognitionRef.current || isLoading}>
                 {isListening ? <MicOff className="mr-2 h-5 w-5" /> : <Mic className="mr-2 h-5 w-5" />}
-                {isListening ? 'إيقاف الاستماع' : 'التقاط الصوت'}
+                {isListening ? 'إيقاف الاستماع' : 'تحدث (لا يرسل تلقائيًا)'}
               </Button>
             </div>
           </div>
