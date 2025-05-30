@@ -617,10 +617,7 @@ ${userInput}
             <AlertTitle className="font-bold text-xl block mb-2">تنبيه هام جداً:</AlertTitle>
             <AlertDescription className="text-lg">
               هذه المعلومات لأغراض تعليمية وعامة فقط، ولا تحل محل الاستشارة الطبية المتخصصة.
-              <strong> الذكاء الاصطناعي لا يمكنه تشخيص الأمراض أو وصف الأدوية أو تقديم نصيحة طبية حقيقية.</strong>
               يجب دائمًا استشارة طبيب مؤهل للحصول على تشخيص دقيق وخطة علاج مناسبة.
-              <span className="block mt-3 font-bold">يرجى عدم تحميل أي صور أو معلومات صوتية أو نصية تحتوي على معلومات شخصية حساسة أو بيانات مرضى حقيقيين.</span>
-              <span className="block mt-3 font-bold">لا يتم تخزين أي صور أو مقاطع فيديو من الكاميرا على أي خادم.</span>
             </AlertDescription>
           </Alert>
 

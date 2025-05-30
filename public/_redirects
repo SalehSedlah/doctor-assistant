@@ -1,0 +1,12 @@
+# Netlify Redirects
+# This file is used by Netlify to configure redirect and rewrite rules.
+
+# Example: Single Page App (SPA) fallback rule.
+# This rule is often used for Next.js apps to ensure client-side routing works correctly.
+# Uncomment and adapt if your Next.js app is purely static or if Netlify's Next.js plugin doesn't handle this for you.
+# /* /index.html 200
+
+# Example: Redirect an old path to a new path
+# /old-blog-post /new-blog-post 301
+
+# Add your custom redirect rules below:
