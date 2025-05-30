@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Cairo } from "next/font/google";
 import "./globals.css";
-// import { Toaster } from "@/components/ui/toaster"; // Toaster removed as per new design
 
-const inter = Inter({
-  subsets: ["latin", "arabic"],
-  variable: "--font-inter",
+const cairo = Cairo({
+  subsets: ["arabic", "latin"],
+  variable: "--font-cairo",
 });
 
 export const metadata: Metadata = {
@@ -20,9 +19,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ar" dir="rtl">
-      <body className={`${inter.variable} antialiased`}>
+      <body className={`${cairo.variable} antialiased`}>
         {children}
-        {/* <Toaster /> Removed */}
       </body>
     </html>
   );
